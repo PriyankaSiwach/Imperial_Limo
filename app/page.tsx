@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 export default function Home() {
   const router = useRouter();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const pickupInputRef = useRef<HTMLInputElement | null>(null);
   const dropoffInputRef = useRef<HTMLInputElement | null>(null);
   const [booking, setBooking] = useState({
@@ -196,6 +197,20 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [mobileNavOpen]);
+
   const handleBooking = () => {
     if (!booking.pickupLocation || !booking.dropoffLocation || !booking.pickupDate || !booking.pickupTime) {
       window.alert("Please fill pickup, dropoff, date, and time.");
@@ -246,7 +261,7 @@ export default function Home() {
 
 {/* NAV */}
 <nav id="navbar">
-  <a href="#hero" className="nav-logo">
+  <a href="#hero" className="nav-logo" onClick={() => setMobileNavOpen(false)}>
     <img src="/images/logo_1.png" alt="Imperial Limousine logo" className="nav-logo-image" />
     <span>Imperial Limousine</span>
   </a>
@@ -257,8 +272,68 @@ export default function Home() {
     <li><a href="#contact">Contact</a></li>
   </ul>
   <a href="#book" className="nav-cta">Reserve Now</a>
-  <button className="nav-toggle">Menu</button>
+  <button
+    type="button"
+    className={`nav-toggle${mobileNavOpen ? " nav-toggle--open" : ""}`}
+    aria-expanded={mobileNavOpen}
+    aria-controls="nav-mobile"
+    aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+    onClick={() => setMobileNavOpen((o) => !o)}
+  >
+    <span className="nav-toggle-bars" aria-hidden>
+      <span className="nav-toggle-bar" />
+      <span className="nav-toggle-bar" />
+      <span className="nav-toggle-bar" />
+    </span>
+  </button>
 </nav>
+<div
+  id="nav-mobile"
+  className={`nav-mobile${mobileNavOpen ? " nav-mobile--open" : ""}`}
+  role="dialog"
+  aria-modal="true"
+  aria-label="Site navigation"
+  aria-hidden={!mobileNavOpen}
+>
+  <button type="button" className="nav-mobile-close" aria-label="Close menu" onClick={() => setMobileNavOpen(false)}>
+    ×
+  </button>
+  <ul className="nav-mobile-links">
+    <li>
+      <a href="#fleet" onClick={() => setMobileNavOpen(false)}>
+        Fleet
+      </a>
+    </li>
+    <li>
+      <a href="#services" onClick={() => setMobileNavOpen(false)}>
+        Services
+      </a>
+    </li>
+    <li>
+      <a href="#book" onClick={() => setMobileNavOpen(false)}>
+        Book
+      </a>
+    </li>
+    <li>
+      <a href="#about" onClick={() => setMobileNavOpen(false)}>
+        About
+      </a>
+    </li>
+    <li>
+      <a href="#testimonials" onClick={() => setMobileNavOpen(false)}>
+        Reviews
+      </a>
+    </li>
+    <li>
+      <a href="#contact" onClick={() => setMobileNavOpen(false)}>
+        Contact
+      </a>
+    </li>
+  </ul>
+  <a href="#book" className="nav-cta nav-mobile-cta" onClick={() => setMobileNavOpen(false)}>
+    Reserve Now
+  </a>
+</div>
 
 {/* HERO */}
 <section id="hero">
