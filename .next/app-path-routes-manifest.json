@@ -1,0 +1,13 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/create-checkout-session/route": "/api/create-checkout-session",
+  "/api/distance/route": "/api/distance",
+  "/api/send-contact/route": "/api/send-contact",
+  "/api/send-reservation/route": "/api/send-reservation",
+  "/confirmation/page": "/confirmation",
+  "/page": "/",
+  "/privacy-policy/page": "/privacy-policy",
+  "/success/page": "/success",
+  "/terms-of-service/page": "/terms-of-service"
+}

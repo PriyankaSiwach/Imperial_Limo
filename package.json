@@ -1,0 +1,25 @@
+{
+  "name": "imperial-next",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@stripe/stripe-js": "^9.3.1",
+    "@types/nodemailer": "^8.0.0",
+    "next": "latest",
+    "nodemailer": "^8.0.7",
+    "react": "latest",
+    "react-dom": "latest",
+    "stripe": "^22.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "typescript": "^6.0.3"
+  }
+}
