@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-
-type VehicleKey = "eclass" | "sclass" | "escalade" | "suburban" | "bmw7";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import type { VehicleKey } from "@/lib/booking-price";
 
 const VEHICLE_META: Record<VehicleKey, { label: string; image: string; perMile: number }> = {
-  eclass: { label: "Mercedes-Benz E class- Business Sedan", image: "/images/mercedes_E.png", perMile: 4 },
+  eclass: { label: "Mercedes-Benz E-Class", image: "/images/mercedes_E.png", perMile: 4 },
   sclass: { label: "Mercedes-Benz S Class- Executive Sedan", image: "/images/mercedes1.png", perMile: 7 },
   escalade: { label: "Cadillac Escalade ESV-Van/SUV", image: "/images/escalade2.png", perMile: 5.5 },
   suburban: { label: "Chevrolet Suburban- Van/SUV", image: "/images/suburban.png", perMile: 5 },
@@ -21,6 +22,53 @@ const FLAT_RATES = {
   lga: { eclass: 110, sclass: 220, escalade: 170, suburban: 150, bmw7: 220 },
 } as const;
 const TAX_MULTIPLIER = 1.08;
+
+/** Official Stripe CardElement styling — PCI-compliant hosted fields. */
+const CARD_ELEMENT_OPTIONS = {
+  style: {
+    base: {
+      color: "#FAFAF8",
+      fontFamily: "Montserrat, system-ui, sans-serif",
+      fontSize: "16px",
+      fontSmoothing: "antialiased",
+      "::placeholder": { color: "#8A6B28" },
+      iconColor: "#C9A84C",
+    },
+    invalid: {
+      color: "#d66b6b",
+      iconColor: "#d66b6b",
+    },
+  },
+  hidePostalCode: true,
+};
+
+function IconLock({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path
+        d="M7 11V8a5 5 0 0 1 10 0v3M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconShield({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path
+        d="M12 3l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V7l8-4z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 function containsManhattan(text: string): boolean {
   return text.toLowerCase().includes("manhattan");
@@ -55,6 +103,204 @@ async function getDrivingMiles(origin: string, destination: string): Promise<num
   return typeof miles === "number" && Number.isFinite(miles) ? miles : null;
 }
 
+function emailLooksValid(value: string): boolean {
+  const v = value.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+type Booking = {
+  pickupDate: string;
+  pickupTime: string;
+  pickupLocation: string;
+  dropoffLocation: string;
+  specialRequests: string;
+};
+
+type StripePaymentBlockProps = {
+  clientSecret: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  vehicleLabel: string;
+  vehicleKey: VehicleKey;
+  booking: Booking;
+  onError: (message: string) => void;
+};
+
+function StripePaymentBlock({
+  clientSecret,
+  firstName,
+  lastName,
+  phone,
+  email,
+  vehicleLabel,
+  vehicleKey,
+  booking,
+  onError,
+}: StripePaymentBlockProps) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const router = useRouter();
+  const [cardKind, setCardKind] = useState<"credit" | "debit">("credit");
+  const [cardComplete, setCardComplete] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const fieldsOk =
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    phone.trim().length >= 7 &&
+    emailLooksValid(email);
+
+  const canSubmit = fieldsOk && cardComplete && Boolean(stripe && elements);
+
+  const handlePay = useCallback(async () => {
+    if (!stripe || !elements || !canSubmit) return;
+    const card = elements.getElement(CardElement);
+    if (!card) {
+      onError("Card fields are not ready. Please refresh and try again.");
+      return;
+    }
+
+    setBusy(true);
+    onError("");
+
+    try {
+      const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card,
+          billing_details: {
+            name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+            email: email.trim(),
+            phone: phone.trim(),
+          },
+        },
+      });
+
+      if (error) {
+        onError(error.message || "Your card could not be processed.");
+        return;
+      }
+
+      if (!paymentIntent || paymentIntent.status !== "succeeded") {
+        onError("Payment did not complete. Please try again.");
+        return;
+      }
+
+      const fin = await fetch("/api/finalize-paid-reservation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentIntentId: paymentIntent.id,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phone.trim(),
+          email: email.trim(),
+          vehicleKey,
+          vehicleLabel,
+          pickupLocation: booking.pickupLocation,
+          dropoffLocation: booking.dropoffLocation,
+          pickupDate: booking.pickupDate,
+          pickupTime: booking.pickupTime,
+          specialRequests: booking.specialRequests.trim() || "None",
+        }),
+      });
+
+      const data = (await fin.json().catch(() => ({}))) as { error?: string };
+      if (!fin.ok) {
+        onError(data.error || "Booking could not be finalized after payment.");
+        return;
+      }
+
+      router.push("/success");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }, [
+    stripe,
+    elements,
+    canSubmit,
+    clientSecret,
+    firstName,
+    lastName,
+    phone,
+    email,
+    vehicleKey,
+    vehicleLabel,
+    booking,
+    router,
+    onError,
+  ]);
+
+  return (
+    <div className="confirmation-stripe-block">
+      <div className="payment-secure-header">
+        <IconLock className="payment-secure-header-icon" />
+        <span>Secure Checkout</span>
+      </div>
+
+      <h3 className="confirmation-payment-heading">Payment</h3>
+      <p className="confirmation-payment-hint">
+        Your card details are entered in Stripe&apos;s secure fields. We only charge when you confirm.
+      </p>
+
+      <div className="payment-method-selector" role="group" aria-label="Card type">
+        <button
+          type="button"
+          className={`payment-method-btn${cardKind === "credit" ? " payment-method-btn--active" : ""}`}
+          aria-pressed={cardKind === "credit"}
+          onClick={() => setCardKind("credit")}
+        >
+          Credit Card
+        </button>
+        <button
+          type="button"
+          className={`payment-method-btn${cardKind === "debit" ? " payment-method-btn--active" : ""}`}
+          aria-pressed={cardKind === "debit"}
+          onClick={() => setCardKind("debit")}
+        >
+          Debit Card
+        </button>
+      </div>
+
+      <div className="form-group payment-card-field-group">
+        <label>Card details</label>
+        <div className="stripe-element-wrap stripe-card-element-wrap">
+          <CardElement options={CARD_ELEMENT_OPTIONS} onChange={(e) => setCardComplete(e.complete)} />
+        </div>
+      </div>
+
+      <ul className="payment-trust-badges" aria-label="Security">
+        <li className="payment-trust-badge">
+          <IconLock className="payment-trust-icon" />
+          <span>256-bit SSL Encrypted</span>
+        </li>
+        <li className="payment-trust-badge">
+          <span className="payment-trust-stripe-mark" aria-hidden>
+            stripe
+          </span>
+          <span>Secured by Stripe</span>
+        </li>
+        <li className="payment-trust-badge">
+          <IconShield className="payment-trust-icon" />
+          <span>PCI DSS Compliant</span>
+        </li>
+      </ul>
+
+      <button
+        type="button"
+        className="btn-primary confirmation-pay-btn"
+        disabled={!canSubmit || busy}
+        onClick={handlePay}
+      >
+        {busy ? "Processing…" : "Confirm & Pay"}
+      </button>
+    </div>
+  );
+}
+
 function ConfirmationContent() {
   const router = useRouter();
   const params = useSearchParams();
@@ -64,8 +310,22 @@ function ConfirmationContent() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [isPaying, setIsPaying] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [piLoading, setPiLoading] = useState(false);
+  const [piLoadError, setPiLoadError] = useState("");
+
+  /** Inlined at build — identical on server and first client paint (avoids hydration mismatch). */
+  const publishableKey = (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "").trim();
+  const hasPublishableKey = publishableKey.length > 0;
+
+  /** loadStripe uses browser APIs — initialize only after mount so SSR and hydration match. */
+  const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null);
+
+  useEffect(() => {
+    if (!hasPublishableKey) return;
+    setStripePromise(loadStripe(publishableKey));
+  }, [hasPublishableKey, publishableKey]);
 
   const booking = useMemo(
     () => ({
@@ -97,109 +357,120 @@ function ConfirmationContent() {
   const priceByVehicle = useMemo(() => {
     const vehicles = Object.keys(VEHICLE_META) as VehicleKey[];
     if (routeKey) {
-      return vehicles.reduce((acc, key) => {
-        const flat = FLAT_RATES[routeKey][key];
-        const total = Math.round(flat * TAX_MULTIPLIER);
-        acc[key] = {
-          base: flat,
-          total,
-          note: "Flat airport transfer pricing applied.",
-        };
-        return acc;
-      }, {} as Record<VehicleKey, { base: number; total: number; note: string }>);
+      return vehicles.reduce(
+        (acc, key) => {
+          const flat = FLAT_RATES[routeKey][key];
+          const total = Math.round(flat * TAX_MULTIPLIER);
+          acc[key] = {
+            base: flat,
+            total,
+            note: "Flat airport transfer pricing applied.",
+          };
+          return acc;
+        },
+        {} as Record<VehicleKey, { base: number; total: number; note: string }>
+      );
     }
     const miles = drivingMiles ?? 0;
-    return vehicles.reduce((acc, key) => {
-      const rate = VEHICLE_META[key].perMile;
-      const estimated = Math.max(95, Math.round(miles * rate));
-      const total = Math.round(estimated * TAX_MULTIPLIER);
-      acc[key] = {
-        base: estimated,
-        total,
-        note: miles > 0 ? `Driving distance ${miles.toFixed(1)} miles at $${rate}/mile.` : "Distance Matrix unavailable, minimum fare applied.",
-      };
-      return acc;
-    }, {} as Record<VehicleKey, { base: number; total: number; note: string }>);
+    return vehicles.reduce(
+      (acc, key) => {
+        const rate = VEHICLE_META[key].perMile;
+        const estimated = Math.max(95, Math.round(miles * rate));
+        const total = Math.round(estimated * TAX_MULTIPLIER);
+        acc[key] = {
+          base: estimated,
+          total,
+          note:
+            miles > 0
+              ? `Driving distance ${miles.toFixed(1)} miles at $${rate}/mile.`
+              : "Distance Matrix unavailable, minimum fare applied.",
+        };
+        return acc;
+      },
+      {} as Record<VehicleKey, { base: number; total: number; note: string }>
+    );
   }, [routeKey, drivingMiles]);
 
   const chosen = priceByVehicle[selectedVehicle];
 
-  const handleCheckout = async () => {
-    if (!firstName || !lastName || !phone || !email) {
-      window.alert("Please enter first name, last name, phone, and email before payment.");
+  useEffect(() => {
+    if (!booking.pickupLocation.trim() || !booking.dropoffLocation.trim()) {
+      setClientSecret(null);
+      setPiLoadError("Pick-up and drop-off are required to load payment.");
       return;
     }
 
-    try {
-      setPaymentError("");
-      setIsPaying(true);
-      const reservationRes = await fetch("/api/send-reservation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${firstName} ${lastName}`.trim(),
-          phone,
-          email,
-          vehicle: VEHICLE_META[selectedVehicle].label,
-          pickupAddress: booking.pickupLocation,
-          dropoffAddress: booking.dropoffLocation,
-          date: booking.pickupDate,
-          time: booking.pickupTime,
-          specialRequests: booking.specialRequests,
-          totalPrice: chosen.total,
-        }),
-      });
-      if (!reservationRes.ok) {
-        throw new Error("Reservation email failed. Please try again.");
+    let cancelled = false;
+    (async () => {
+      setPiLoading(true);
+      setPiLoadError("");
+      setClientSecret(null);
+      try {
+        const res = await fetch("/api/create-payment-intent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pickupLocation: booking.pickupLocation,
+            dropoffLocation: booking.dropoffLocation,
+            vehicleKey: selectedVehicle,
+          }),
+        });
+        const data = (await res.json()) as { clientSecret?: string; error?: string };
+        if (cancelled) return;
+        if (!res.ok || !data.clientSecret) {
+          setPiLoadError(data.error || "Could not initialize payment.");
+          return;
+        }
+        setClientSecret(data.clientSecret);
+        setPaymentError("");
+      } catch {
+        if (!cancelled) setPiLoadError("Could not initialize payment.");
+      } finally {
+        if (!cancelled) setPiLoading(false);
       }
+    })();
 
-      const response = await fetch("/api/create-checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vehicleName: VEHICLE_META[selectedVehicle].label,
-          finalPrice: chosen.total,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error("Unable to create checkout session");
-      }
-      const data = (await response.json()) as { sessionId: string; url?: string | null };
-      if (!data.url) {
-        throw new Error("Checkout URL missing");
-      }
-      window.location.href = data.url;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Payment redirection failed";
-      setPaymentError(message);
-    } finally {
-      setIsPaying(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [booking.pickupLocation, booking.dropoffLocation, selectedVehicle]);
 
   const handleGoBack = () => {
-    const params = new URLSearchParams({
+    const q = new URLSearchParams({
       pickupDate: booking.pickupDate,
       pickupTime: booking.pickupTime,
       pickupLocation: booking.pickupLocation,
       dropoffLocation: booking.dropoffLocation,
       specialRequests: booking.specialRequests,
     });
-    router.push(`/?${params.toString()}#book`);
+    router.push(`/?${q.toString()}#book`);
   };
 
   return (
-    <main className="confirmation-page">
+    <main className="confirmation-page" suppressHydrationWarning>
       <div className="container confirmation-wrap">
         <div className="confirmation-summary">
           <span className="section-label">Pricing &amp; Confirmation</span>
-          <h1 className="section-title confirmation-main-title">Your <em>Trip</em> &amp; Live Pricing</h1>
+          <h1 className="section-title confirmation-main-title">
+            Your <em>Trip</em> &amp; Live Pricing
+          </h1>
           <div className="divider"></div>
-          <p><strong>Pick-Up:</strong> <span className="confirmation-value">{booking.pickupLocation || "Not provided"}</span></p>
-          <p><strong>Drop-Off:</strong> <span className="confirmation-value">{booking.dropoffLocation || "Not provided"}</span></p>
-          <p><strong>Date:</strong> <span className="confirmation-value">{booking.pickupDate || "Not provided"}</span></p>
-          <p><strong>Time:</strong> <span className="confirmation-value">{booking.pickupTime || "Not provided"}</span></p>
-          <p><strong>Pricing Mode:</strong> <span className="confirmation-value">{routeKey ? "Flat airport route rate" : "Distance Matrix per-mile pricing"}</span></p>
+          <p>
+            <strong>Pick-Up:</strong> <span className="confirmation-value">{booking.pickupLocation || "Not provided"}</span>
+          </p>
+          <p>
+            <strong>Drop-Off:</strong> <span className="confirmation-value">{booking.dropoffLocation || "Not provided"}</span>
+          </p>
+          <p>
+            <strong>Date:</strong> <span className="confirmation-value">{booking.pickupDate || "Not provided"}</span>
+          </p>
+          <p>
+            <strong>Time:</strong> <span className="confirmation-value">{booking.pickupTime || "Not provided"}</span>
+          </p>
+          <p>
+            <strong>Pricing Mode:</strong>{" "}
+            <span className="confirmation-value">{routeKey ? "Flat airport route rate" : "Distance Matrix per-mile pricing"}</span>
+          </p>
         </div>
 
         <div className="confirmation-card">
@@ -212,44 +483,93 @@ function ConfirmationContent() {
                 onClick={() => setSelectedVehicle(key)}
               >
                 <img src={VEHICLE_META[key].image} alt={VEHICLE_META[key].label} className="confirmation-vehicle" />
-                <p className="confirmation-vehicle-title">{VEHICLE_META[key].label}</p>
-                <p className="confirmation-price-small">${priceByVehicle[key].total} <span className="price-incl-note">incl. taxes &amp; fees</span></p>
+                <span className="confirmation-vehicle-title">{VEHICLE_META[key].label}</span>
+                <span className="confirmation-price-small">
+                  ${priceByVehicle[key].total} <span className="price-incl-note">incl. taxes &amp; fees</span>
+                </span>
               </button>
             ))}
           </div>
-          <div className="confirmation-price">${chosen.total} <span className="confirmation-price-note">incl. taxes &amp; fees</span></div>
-          <div className="confirmation-breakdown">
-            <p><strong>Selected vehicle:</strong> <span className="confirmation-value">{VEHICLE_META[selectedVehicle].label}</span></p>
-            <p><strong>Base fare:</strong> <span className="confirmation-value">${chosen.base}</span></p>
-            <p><strong>Total:</strong> <span className="confirmation-value">${chosen.total}</span></p>
-            <p><strong>Driving distance:</strong> <span className="confirmation-value">{chosen.note}</span></p>
-            {booking.specialRequests ? <p><strong>Special requests:</strong> <span className="confirmation-value">{booking.specialRequests}</span></p> : null}
+          <div className="confirmation-price">
+            ${chosen.total} <span className="confirmation-price-note">incl. taxes &amp; fees</span>
           </div>
+          <div className="confirmation-breakdown">
+            <p>
+              <strong>Selected vehicle:</strong> <span className="confirmation-value">{VEHICLE_META[selectedVehicle].label}</span>
+            </p>
+            <p>
+              <strong>Base fare:</strong> <span className="confirmation-value">${chosen.base}</span>
+            </p>
+            <p>
+              <strong>Total:</strong> <span className="confirmation-value">${chosen.total}</span>
+            </p>
+            <p>
+              <strong>Driving distance:</strong> <span className="confirmation-value">{chosen.note}</span>
+            </p>
+            {booking.specialRequests ? (
+              <p>
+                <strong>Special requests:</strong> <span className="confirmation-value">{booking.specialRequests}</span>
+              </p>
+            ) : null}
+          </div>
+
           <div className="confirmation-name-form">
             <div className="form-row">
               <div className="form-group">
                 <label>First Name</label>
-                <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Jonathan" />
+                <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" autoComplete="given-name" />
               </div>
               <div className="form-group">
                 <label>Last Name</label>
-                <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Whitmore" />
+                <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" autoComplete="family-name" />
               </div>
             </div>
             <div className="form-row">
               <div className="form-group">
                 <label>Phone</label>
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 (516) 614-9134" />
+                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" autoComplete="tel" />
               </div>
               <div className="form-group">
                 <label>Email</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email address"
+                  autoComplete="email"
+                />
               </div>
             </div>
           </div>
-          <div className="confirmation-actions">
-            <button className="btn-primary" onClick={handleCheckout} disabled={isPaying}>{isPaying ? "Redirecting..." : "Confirm & Pay"}</button>
-            <button className="btn-outline" onClick={handleGoBack}>Go Back</button>
+
+          {!hasPublishableKey ? (
+            <p className="status-error">Payment is unavailable: add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to your environment.</p>
+          ) : !stripePromise ? (
+            <p className="confirmation-payment-hint">Preparing secure payment…</p>
+          ) : piLoadError ? (
+            <p className="status-error">{piLoadError}</p>
+          ) : clientSecret ? (
+            <Elements stripe={stripePromise} key={clientSecret} options={{ clientSecret }}>
+              <StripePaymentBlock
+                clientSecret={clientSecret}
+                firstName={firstName}
+                lastName={lastName}
+                phone={phone}
+                email={email}
+                vehicleLabel={VEHICLE_META[selectedVehicle].label}
+                vehicleKey={selectedVehicle}
+                booking={booking}
+                onError={setPaymentError}
+              />
+            </Elements>
+          ) : (
+            <p className="confirmation-payment-hint">Loading secure payment…</p>
+          )}
+
+          <div className="confirmation-actions confirmation-actions-after-pay">
+            <button type="button" className="btn-outline" onClick={handleGoBack}>
+              Go Back
+            </button>
           </div>
           {paymentError ? <p className="status-error">{paymentError}</p> : null}
         </div>
@@ -260,7 +580,18 @@ function ConfirmationContent() {
 
 export default function ConfirmationPage() {
   return (
-    <Suspense fallback={<main className="confirmation-page"><div className="container confirmation-wrap"><div className="confirmation-summary"><span className="section-label">Pricing &amp; Confirmation</span><h1 className="section-title">Loading...</h1></div></div></main>}>
+    <Suspense
+      fallback={
+        <main className="confirmation-page" suppressHydrationWarning>
+          <div className="container confirmation-wrap">
+            <div className="confirmation-summary">
+              <span className="section-label">Pricing &amp; Confirmation</span>
+              <h1 className="section-title">Loading...</h1>
+            </div>
+          </div>
+        </main>
+      }
+    >
       <ConfirmationContent />
     </Suspense>
   );
