@@ -84,50 +84,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const cursor = document.getElementById("cursor");
-    const ring = document.getElementById("cursorRing");
-    if (!cursor || !ring) return;
-
-    let mx = 0;
-    let my = 0;
-    let rx = 0;
-    let ry = 0;
-
-    const onMouseMove = (e: MouseEvent) => {
-      mx = e.clientX;
-      my = e.clientY;
-      (cursor as HTMLElement).style.left = mx + "px";
-      (cursor as HTMLElement).style.top = my + "px";
-    };
-
-    const animRing = () => {
-      rx += (mx - rx) * 0.12;
-      ry += (my - ry) * 0.12;
-      (ring as HTMLElement).style.left = rx + "px";
-      (ring as HTMLElement).style.top = ry + "px";
-      requestAnimationFrame(animRing);
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    animRing();
-
-    document.querySelectorAll("a, button, .service-item, .fleet-card").forEach((el) => {
-      el.addEventListener("mouseenter", () => {
-        (cursor as HTMLElement).style.width = "16px";
-        (cursor as HTMLElement).style.height = "16px";
-        (ring as HTMLElement).style.width = "50px";
-        (ring as HTMLElement).style.height = "50px";
-        (ring as HTMLElement).style.borderColor = "rgba(201,168,76,0.8)";
-      });
-      el.addEventListener("mouseleave", () => {
-        (cursor as HTMLElement).style.width = "8px";
-        (cursor as HTMLElement).style.height = "8px";
-        (ring as HTMLElement).style.width = "32px";
-        (ring as HTMLElement).style.height = "32px";
-        (ring as HTMLElement).style.borderColor = "rgba(201,168,76,0.5)";
-      });
-    });
-
     const nav = document.getElementById("navbar");
     const onScroll = () => nav?.classList.toggle("scrolled", window.scrollY > 60);
     window.addEventListener("scroll", onScroll);
@@ -190,7 +146,6 @@ export default function Home() {
     });
 
     return () => {
-      document.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("scroll", onScroll);
       observer.disconnect();
       statObs.disconnect();
@@ -255,9 +210,6 @@ export default function Home() {
 
   return (
     <>
-
-<div className="cursor" id="cursor"></div>
-<div className="cursor-ring" id="cursorRing"></div>
 
 {/* NAV */}
 <nav id="navbar">
@@ -383,7 +335,7 @@ export default function Home() {
       <p style={{ fontSize: "13px", color: "var(--muted)", maxWidth: "500px", margin: "0 auto", lineHeight: 2, fontWeight: 300 }}>Every vehicle in our collection is meticulously maintained, detailed to perfection, and driven by professionals trained to the highest standard.</p>
     </div>
     <div className="fleet-grid reveal reveal-delay-1">
-      <div className="fleet-card fleet-card-featured">
+      <div className="fleet-card">
         <img src="/images/escalade2.png" alt="Black Cadillac Escalade" loading="lazy" />
         <div className="fleet-card-info">
           <span className="fleet-name">Cadillac Escalade ESV</span>
@@ -398,10 +350,10 @@ export default function Home() {
         </div>
       </div>
       <div className="fleet-card">
-        <img src="/images/escalade1.jpeg" alt="Black SUV" loading="lazy" />
+        <img src="/images/suburban.png" alt="Chevrolet Suburban" loading="lazy" />
         <div className="fleet-card-info">
-          <span className="fleet-name">Cadillac Escalade Luxury</span>
-          <span className="fleet-type">Premium Escalade SUV · Up to 6 Passengers</span>
+          <span className="fleet-name">Chevrolet Suburban</span>
+          <span className="fleet-type">Full-Size Luxury SUV · Up to 6 Passengers</span>
         </div>
       </div>
       <div className="fleet-card">
@@ -412,10 +364,13 @@ export default function Home() {
         </div>
       </div>
       <div className="fleet-card">
-        <img src="/images/mercedes_E.png" alt="Mercedes E-Class Business Sedan" loading="lazy" />
+        <img src="/images/mercedes_E.png" alt="Mercedes E-Class" loading="lazy" />
         <div className="fleet-card-info">
-          <span className="fleet-name">Mercedes E-Class Business Sedan</span>
-          <span className="fleet-type">Executive Sedan · Up to 3 Passengers</span>
+          <span className="fleet-name">Mercedes E-Class</span>
+          <span className="fleet-type fleet-type-split">
+            <span className="fleet-type-gold">Business Sedan</span>
+            <span className="fleet-type-gold fleet-type-gold-passengers"> · Up to 3 Passengers</span>
+          </span>
         </div>
       </div>
     </div>
