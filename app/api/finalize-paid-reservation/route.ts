@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { computeTotalUsd, isVehicleKey, totalUsdToStripeCents } from "@/lib/booking-price";
+import { clampDurationHours, computeTotalUsd, isVehicleKey, totalUsdToStripeCents } from "@/lib/booking-price";
 import { sendReservationEmails } from "@/lib/reservation-mail";
 
 export async function POST(req: NextRequest) {
@@ -22,6 +22,8 @@ export async function POST(req: NextRequest) {
     pickupDate?: string;
     pickupTime?: string;
     specialRequests?: string;
+    tripType?: string;
+    durationHours?: number;
   };
 
   const paymentIntentId = body.paymentIntentId?.trim();
@@ -36,6 +38,7 @@ export async function POST(req: NextRequest) {
   const pickupDate = body.pickupDate?.trim() || "";
   const pickupTime = body.pickupTime?.trim() || "";
   const specialRequests = body.specialRequests?.trim() || "None";
+  const tripType = body.tripType === "hourly" ? "hourly" : "oneway";
 
   if (!paymentIntentId || !firstName || !lastName || !phone || !email) {
     return NextResponse.json({ error: "Missing contact or payment information" }, { status: 400 });
@@ -43,15 +46,26 @@ export async function POST(req: NextRequest) {
   if (!isVehicleKey(vehicleKey) || !vehicleLabel) {
     return NextResponse.json({ error: "Invalid vehicle" }, { status: 400 });
   }
-  if (!pickupLocation || !dropoffLocation || !pickupDate || !pickupTime) {
+  if (!pickupLocation || !pickupDate || !pickupTime) {
+    return NextResponse.json({ error: "Incomplete trip details" }, { status: 400 });
+  }
+  if (tripType === "oneway" && !dropoffLocation) {
     return NextResponse.json({ error: "Incomplete trip details" }, { status: 400 });
   }
 
-  const expectedUsd = await computeTotalUsd({
-    pickupLocation,
-    dropoffLocation,
-    vehicleKey,
-  });
+  const expectedUsd =
+    tripType === "hourly"
+      ? await computeTotalUsd({
+          tripType: "hourly",
+          durationHours: clampDurationHours(Number(body.durationHours)),
+          vehicleKey,
+          pickupLocation,
+        })
+      : await computeTotalUsd({
+          pickupLocation,
+          dropoffLocation,
+          vehicleKey,
+        });
   const expectedCents = totalUsdToStripeCents(expectedUsd);
 
   const stripe = new Stripe(stripeKey);
@@ -77,11 +91,13 @@ export async function POST(req: NextRequest) {
       email,
       vehicle: vehicleLabel,
       pickupAddress: pickupLocation,
-      dropoffAddress: dropoffLocation,
+      dropoffAddress: tripType === "hourly" ? "Hourly as-directed (see duration)" : dropoffLocation,
       date: pickupDate,
       time: pickupTime,
       specialRequests,
       totalPrice: expectedUsd,
+      tripType,
+      durationHours: tripType === "hourly" ? clampDurationHours(Number(body.durationHours)) : undefined,
     });
   } catch (e) {
     console.error("[finalize-paid-reservation] email", e);

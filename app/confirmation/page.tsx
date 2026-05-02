@@ -5,7 +5,15 @@ import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import type { VehicleKey } from "@/lib/booking-price";
+import {
+  clampDurationHours,
+  HOURLY_RATE_USD,
+  MAX_HOURLY_DURATION,
+  MIN_HOURLY_DURATION,
+  TEST_RIDE_BASE_USD,
+  type TripType,
+  type VehicleKey,
+} from "@/lib/booking-price";
 
 const VEHICLE_META: Record<VehicleKey, { label: string; image: string; perMile: number }> = {
   eclass: { label: "Mercedes-Benz E-Class", image: "/images/mercedes_E.png", perMile: 4 },
@@ -13,7 +21,23 @@ const VEHICLE_META: Record<VehicleKey, { label: string; image: string; perMile: 
   escalade: { label: "Cadillac Escalade ESV-Van/SUV", image: "/images/escalade2.png", perMile: 5.5 },
   suburban: { label: "Chevrolet Suburban- Van/SUV", image: "/images/suburban.png", perMile: 5 },
   bmw7: { label: "BMW 7 series- Executive Sedan", image: "/images/bmw3.png", perMile: 7 },
+  testride: { label: "Test Ride", image: "/images/mercedes_E.png", perMile: 1 },
 };
+
+function vehicleKeysForConfirmation(): VehicleKey[] {
+  const keys = Object.keys(VEHICLE_META) as VehicleKey[];
+  if (process.env.NODE_ENV === "development") return keys;
+  return keys.filter((k) => k !== "testride");
+}
+
+function testRidePriceRow(): { base: number; total: number; note: string } {
+  const total = Math.round(TEST_RIDE_BASE_USD * TAX_MULTIPLIER);
+  return {
+    base: TEST_RIDE_BASE_USD,
+    total,
+    note: "Development test vehicle — flat $2 base fare before tax.",
+  };
+}
 
 const FLAT_RATES = {
   jfk: { eclass: 130, escalade: 210, suburban: 180, sclass: 280, bmw7: 280 },
@@ -114,6 +138,8 @@ type Booking = {
   pickupLocation: string;
   dropoffLocation: string;
   specialRequests: string;
+  tripType: TripType;
+  durationHours: number;
 };
 
 type StripePaymentBlockProps = {
@@ -203,6 +229,8 @@ function StripePaymentBlock({
           pickupDate: booking.pickupDate,
           pickupTime: booking.pickupTime,
           specialRequests: booking.specialRequests.trim() || "None",
+          tripType: booking.tripType,
+          durationHours: booking.tripType === "hourly" ? clampDurationHours(booking.durationHours) : undefined,
         }),
       });
 
@@ -327,20 +355,28 @@ function ConfirmationContent() {
     setStripePromise(loadStripe(publishableKey));
   }, [hasPublishableKey, publishableKey]);
 
-  const booking = useMemo(
-    () => ({
+  const booking = useMemo(() => {
+    const tripType: TripType = params.get("tripType") === "hourly" ? "hourly" : "oneway";
+    const dhRaw = parseInt(params.get("durationHours") || "", 10);
+    return {
       pickupDate: params.get("pickupDate") || "",
       pickupTime: params.get("pickupTime") || "",
       pickupLocation: params.get("pickupLocation") || "",
       dropoffLocation: params.get("dropoffLocation") || "",
       specialRequests: params.get("specialRequests") || "",
-    }),
-    [params]
-  );
+      tripType,
+      durationHours: Number.isFinite(dhRaw) ? clampDurationHours(dhRaw) : MIN_HOURLY_DURATION,
+    };
+  }, [params]);
 
-  const routeKey = detectFlatRoute(booking.pickupLocation, booking.dropoffLocation);
+  const routeKey =
+    booking.tripType === "hourly" ? null : detectFlatRoute(booking.pickupLocation, booking.dropoffLocation);
 
   useEffect(() => {
+    if (booking.tripType === "hourly") {
+      setDrivingMiles(null);
+      return;
+    }
     if (routeKey) return;
     let cancelled = false;
     (async () => {
@@ -352,13 +388,38 @@ function ConfirmationContent() {
     return () => {
       cancelled = true;
     };
-  }, [booking.pickupLocation, booking.dropoffLocation, routeKey]);
+  }, [booking.pickupLocation, booking.dropoffLocation, routeKey, booking.tripType]);
 
   const priceByVehicle = useMemo(() => {
-    const vehicles = Object.keys(VEHICLE_META) as VehicleKey[];
+    const vehicles = vehicleKeysForConfirmation();
+    if (booking.tripType === "hourly") {
+      const h = clampDurationHours(booking.durationHours);
+      return vehicles.reduce(
+        (acc, key) => {
+          if (key === "testride") {
+            acc[key] = testRidePriceRow();
+            return acc;
+          }
+          const hourly = HOURLY_RATE_USD[key];
+          const base = h * hourly;
+          const total = Math.round(base * TAX_MULTIPLIER);
+          acc[key] = {
+            base,
+            total,
+            note: `${h} hour(s) at $${hourly}/hr (hourly as-directed).`,
+          };
+          return acc;
+        },
+        {} as Record<VehicleKey, { base: number; total: number; note: string }>
+      );
+    }
     if (routeKey) {
       return vehicles.reduce(
         (acc, key) => {
+          if (key === "testride") {
+            acc[key] = testRidePriceRow();
+            return acc;
+          }
           const flat = FLAT_RATES[routeKey][key];
           const total = Math.round(flat * TAX_MULTIPLIER);
           acc[key] = {
@@ -374,6 +435,10 @@ function ConfirmationContent() {
     const miles = drivingMiles ?? 0;
     return vehicles.reduce(
       (acc, key) => {
+        if (key === "testride") {
+          acc[key] = testRidePriceRow();
+          return acc;
+        }
         const rate = VEHICLE_META[key].perMile;
         const estimated = Math.max(95, Math.round(miles * rate));
         const total = Math.round(estimated * TAX_MULTIPLIER);
@@ -389,12 +454,24 @@ function ConfirmationContent() {
       },
       {} as Record<VehicleKey, { base: number; total: number; note: string }>
     );
-  }, [routeKey, drivingMiles]);
+  }, [booking.tripType, booking.durationHours, routeKey, drivingMiles]);
 
   const chosen = priceByVehicle[selectedVehicle];
 
   useEffect(() => {
-    if (!booking.pickupLocation.trim() || !booking.dropoffLocation.trim()) {
+    if (booking.tripType === "hourly") {
+      if (!booking.pickupLocation.trim()) {
+        setClientSecret(null);
+        setPiLoadError("Pick-up location is required to load payment.");
+        return;
+      }
+      const h = clampDurationHours(booking.durationHours);
+      if (h < MIN_HOURLY_DURATION || h > MAX_HOURLY_DURATION) {
+        setClientSecret(null);
+        setPiLoadError(`Duration must be between ${MIN_HOURLY_DURATION} and ${MAX_HOURLY_DURATION} hours.`);
+        return;
+      }
+    } else if (!booking.pickupLocation.trim() || !booking.dropoffLocation.trim()) {
       setClientSecret(null);
       setPiLoadError("Pick-up and drop-off are required to load payment.");
       return;
@@ -410,8 +487,11 @@ function ConfirmationContent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            tripType: booking.tripType,
             pickupLocation: booking.pickupLocation,
             dropoffLocation: booking.dropoffLocation,
+            durationHours:
+              booking.tripType === "hourly" ? clampDurationHours(booking.durationHours) : undefined,
             vehicleKey: selectedVehicle,
           }),
         });
@@ -433,17 +513,22 @@ function ConfirmationContent() {
     return () => {
       cancelled = true;
     };
-  }, [booking.pickupLocation, booking.dropoffLocation, selectedVehicle]);
+  }, [booking.pickupLocation, booking.dropoffLocation, booking.tripType, booking.durationHours, selectedVehicle]);
 
   const handleGoBack = () => {
     const q = new URLSearchParams({
       pickupDate: booking.pickupDate,
       pickupTime: booking.pickupTime,
       pickupLocation: booking.pickupLocation,
-      dropoffLocation: booking.dropoffLocation,
       specialRequests: booking.specialRequests,
     });
-    router.push(`/?${q.toString()}#book`);
+    if (booking.tripType === "hourly") {
+      q.set("tripType", "hourly");
+      q.set("durationHours", String(clampDurationHours(booking.durationHours)));
+    } else {
+      q.set("dropoffLocation", booking.dropoffLocation);
+    }
+    router.push(`/reserve?${q.toString()}`);
   };
 
   return (
@@ -458,9 +543,16 @@ function ConfirmationContent() {
           <p>
             <strong>Pick-Up:</strong> <span className="confirmation-value">{booking.pickupLocation || "Not provided"}</span>
           </p>
-          <p>
-            <strong>Drop-Off:</strong> <span className="confirmation-value">{booking.dropoffLocation || "Not provided"}</span>
-          </p>
+          {booking.tripType === "hourly" ? (
+            <p>
+              <strong>Service:</strong>{" "}
+              <span className="confirmation-value">Hourly as-directed (no drop-off)</span>
+            </p>
+          ) : (
+            <p>
+              <strong>Drop-Off:</strong> <span className="confirmation-value">{booking.dropoffLocation || "Not provided"}</span>
+            </p>
+          )}
           <p>
             <strong>Date:</strong> <span className="confirmation-value">{booking.pickupDate || "Not provided"}</span>
           </p>
@@ -469,13 +561,48 @@ function ConfirmationContent() {
           </p>
           <p>
             <strong>Pricing Mode:</strong>{" "}
-            <span className="confirmation-value">{routeKey ? "Flat airport route rate" : "Distance Matrix per-mile pricing"}</span>
+            <span className="confirmation-value">
+              {booking.tripType === "hourly"
+                ? "Hourly as-directed rate (incl. tax)"
+                : routeKey
+                  ? "Flat airport route rate"
+                  : "Distance Matrix per-mile pricing"}
+            </span>
           </p>
         </div>
 
         <div className="confirmation-card">
+          {booking.tripType === "hourly" ? (
+            <div className="confirmation-hourly-rate-panel">
+              <h3 className="confirmation-hourly-rate-heading">Hourly rate</h3>
+              <p className="confirmation-hourly-rate-line">
+                <strong>Duration:</strong>{" "}
+                <span className="confirmation-value">{clampDurationHours(booking.durationHours)} hours</span>
+                <span className="confirmation-hourly-rate-range"> ({MIN_HOURLY_DURATION}–{MAX_HOURLY_DURATION} hr)</span>
+              </p>
+              <p className="confirmation-hourly-rate-note">
+                Hourly as-directed service has no separate drop-off—your vehicle and chauffeur remain with you for the booked
+                time. Totals on each vehicle card include taxes &amp; fees.
+              </p>
+              <div className="confirmation-hourly-rate-highlight">
+                <span className="confirmation-hourly-rate-label">{VEHICLE_META[selectedVehicle].label}</span>
+                <span className="confirmation-hourly-rate-amount">
+                  {selectedVehicle === "testride" ? (
+                    <>
+                      Flat ${TEST_RIDE_BASE_USD} base before tax (dev test) → <strong>${chosen.base}</strong>
+                    </>
+                  ) : (
+                    <>
+                      ${HOURLY_RATE_USD[selectedVehicle]}/hr × {clampDurationHours(booking.durationHours)} hrs →{" "}
+                      <strong>${chosen.base}</strong> base before tax
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
+          ) : null}
           <div className="confirmation-grid">
-            {(Object.keys(VEHICLE_META) as VehicleKey[]).map((key) => (
+            {vehicleKeysForConfirmation().map((key) => (
               <button
                 key={key}
                 type="button"
@@ -504,7 +631,8 @@ function ConfirmationContent() {
               <strong>Total:</strong> <span className="confirmation-value">${chosen.total}</span>
             </p>
             <p>
-              <strong>Driving distance:</strong> <span className="confirmation-value">{chosen.note}</span>
+              <strong>{booking.tripType === "hourly" ? "Quote detail:" : "Driving distance:"}</strong>{" "}
+              <span className="confirmation-value">{chosen.note}</span>
             </p>
             {booking.specialRequests ? (
               <p>

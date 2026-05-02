@@ -11,6 +11,9 @@ export type ReservationMailPayload = {
   time: string;
   specialRequests: string;
   totalPrice: number;
+  /** When set, booking is hourly as-directed instead of point-to-point. */
+  tripType?: "oneway" | "hourly";
+  durationHours?: number;
 };
 
 export async function sendReservationEmails(payload: ReservationMailPayload): Promise<void> {
@@ -36,7 +39,14 @@ export async function sendReservationEmails(payload: ReservationMailPayload): Pr
     time,
     specialRequests,
     totalPrice,
+    tripType,
+    durationHours,
   } = payload;
+
+  const serviceLine =
+    tripType === "hourly" && durationHours != null
+      ? `<p><strong>Service:</strong> Hourly as-directed (${escapeHtml(String(durationHours))} hours)</p>`
+      : `<p><strong>Dropoff Address:</strong> ${escapeHtml(dropoffAddress)}</p>`;
 
   await transporter.sendMail({
     from: gmailUser,
@@ -50,7 +60,7 @@ export async function sendReservationEmails(payload: ReservationMailPayload): Pr
         <p><strong>Email:</strong> ${escapeHtml(email)}</p>
         <p><strong>Vehicle:</strong> ${escapeHtml(vehicle)}</p>
         <p><strong>Pickup Address:</strong> ${escapeHtml(pickupAddress)}</p>
-        <p><strong>Dropoff Address:</strong> ${escapeHtml(dropoffAddress)}</p>
+        ${serviceLine}
         <p><strong>Date:</strong> ${escapeHtml(date)}</p>
         <p><strong>Time:</strong> ${escapeHtml(time)}</p>
         <p><strong>Special Requests:</strong> ${escapeHtml(specialRequests)}</p>

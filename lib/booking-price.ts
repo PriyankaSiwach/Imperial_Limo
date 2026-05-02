@@ -1,6 +1,31 @@
 /** Shared server/client-safe pricing for reservations (must match confirmation UI). */
 
-export type VehicleKey = "eclass" | "sclass" | "escalade" | "suburban" | "bmw7";
+export type VehicleKey = "eclass" | "sclass" | "escalade" | "suburban" | "bmw7" | "testride";
+
+export type TripType = "oneway" | "hourly";
+
+/** Hourly as-directed rates (USD per hour, before tax). */
+export const HOURLY_RATE_USD: Record<VehicleKey, number> = {
+  eclass: 90,
+  sclass: 160,
+  escalade: 120,
+  suburban: 100,
+  bmw7: 160,
+  /** Present for typing; totals use {@link TEST_RIDE_BASE_USD} in development only. */
+  testride: 2,
+};
+
+/** Dev-only test vehicle flat base fare (USD before tax). */
+export const TEST_RIDE_BASE_USD = 2;
+
+export const MIN_HOURLY_DURATION = 2;
+export const MAX_HOURLY_DURATION = 24;
+
+export function clampDurationHours(value: number): number {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return MIN_HOURLY_DURATION;
+  return Math.min(MAX_HOURLY_DURATION, Math.max(MIN_HOURLY_DURATION, n));
+}
 
 const FLAT_RATES = {
   jfk: { eclass: 130, escalade: 210, suburban: 180, sclass: 280, bmw7: 280 },
@@ -17,6 +42,7 @@ const PER_MILE: Record<VehicleKey, number> = {
   escalade: 5.5,
   suburban: 5,
   bmw7: 7,
+  testride: 1,
 };
 
 function containsManhattan(text: string): boolean {
@@ -61,12 +87,34 @@ async function fetchDrivingMiles(origin: string, destination: string): Promise<n
   return Number.isFinite(miles) ? miles : null;
 }
 
+export type ComputeTotalUsdParams =
+  | {
+      tripType: "hourly";
+      durationHours: number;
+      vehicleKey: VehicleKey;
+      pickupLocation?: string;
+      dropoffLocation?: string;
+    }
+  | {
+      tripType?: "oneway";
+      pickupLocation: string;
+      dropoffLocation: string;
+      vehicleKey: VehicleKey;
+    };
+
 /** Total charged in USD (integer dollars after tax), matching confirmation page. */
-export async function computeTotalUsd(params: {
-  pickupLocation: string;
-  dropoffLocation: string;
-  vehicleKey: VehicleKey;
-}): Promise<number> {
+export async function computeTotalUsd(params: ComputeTotalUsdParams): Promise<number> {
+  if (params.vehicleKey === "testride") {
+    return Math.round(TEST_RIDE_BASE_USD * TAX_MULTIPLIER);
+  }
+
+  if (params.tripType === "hourly") {
+    const hours = clampDurationHours(params.durationHours);
+    const hourly = HOURLY_RATE_USD[params.vehicleKey];
+    const base = hours * hourly;
+    return Math.round(base * TAX_MULTIPLIER);
+  }
+
   const routeKey = detectFlatRoute(params.pickupLocation, params.dropoffLocation);
   if (routeKey) {
     const flat = FLAT_RATES[routeKey][params.vehicleKey];
@@ -81,6 +129,7 @@ export async function computeTotalUsd(params: {
 }
 
 export function isVehicleKey(v: string): v is VehicleKey {
+  if (v === "testride") return process.env.NODE_ENV === "development";
   return v === "eclass" || v === "sclass" || v === "escalade" || v === "suburban" || v === "bmw7";
 }
 

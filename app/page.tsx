@@ -1,20 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function Home() {
-  const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const pickupInputRef = useRef<HTMLInputElement | null>(null);
-  const dropoffInputRef = useRef<HTMLInputElement | null>(null);
-  const [booking, setBooking] = useState({
-    pickupDate: "",
-    pickupTime: "",
-    pickupLocation: "",
-    dropoffLocation: "",
-    specialRequests: "",
-  });
   const [contactForm, setContactForm] = useState({
     name: "",
     email: "",
@@ -23,65 +12,6 @@ export default function Home() {
   });
   const [contactStatus, setContactStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [isSendingContact, setIsSendingContact] = useState(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const pickupDate = params.get("pickupDate") || "";
-    const pickupTime = params.get("pickupTime") || "";
-    const pickupLocation = params.get("pickupLocation") || "";
-    const dropoffLocation = params.get("dropoffLocation") || "";
-    const specialRequests = params.get("specialRequests") || "";
-    if (pickupDate || pickupTime || pickupLocation || dropoffLocation || specialRequests) {
-      setBooking({ pickupDate, pickupTime, pickupLocation, dropoffLocation, specialRequests });
-    }
-  }, []);
-
-  useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
-    if (!apiKey) return;
-
-    const initAutocomplete = () => {
-      const googleApi = (window as any).google;
-      if (!googleApi?.maps?.places?.Autocomplete) return;
-
-      const bindAutocomplete = (input: HTMLInputElement | null, field: "pickupLocation" | "dropoffLocation") => {
-        if (!input) return;
-        const autocomplete = new googleApi.maps.places.Autocomplete(input, {
-          fields: ["formatted_address", "name"],
-          types: ["geocode"],
-        });
-
-        autocomplete.addListener("place_changed", () => {
-          const place = autocomplete.getPlace();
-          const formatted = place?.formatted_address || place?.name || input.value;
-          setBooking((prev) => ({ ...prev, [field]: formatted }));
-          input.value = formatted;
-        });
-      };
-
-      bindAutocomplete(pickupInputRef.current, "pickupLocation");
-      bindAutocomplete(dropoffInputRef.current, "dropoffLocation");
-    };
-
-    if ((window as any).google?.maps?.places) {
-      initAutocomplete();
-      return;
-    }
-
-    const scriptId = "google-places-script";
-    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
-    if (!script) {
-      script = document.createElement("script");
-      script.id = scriptId;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      document.head.appendChild(script);
-    }
-
-    script.addEventListener("load", initAutocomplete);
-    return () => script?.removeEventListener("load", initAutocomplete);
-  }, []);
 
   useEffect(() => {
     const nav = document.getElementById("navbar");
@@ -166,21 +96,6 @@ export default function Home() {
     };
   }, [mobileNavOpen]);
 
-  const handleBooking = () => {
-    if (!booking.pickupLocation || !booking.dropoffLocation || !booking.pickupDate || !booking.pickupTime) {
-      window.alert("Please fill pickup, dropoff, date, and time.");
-      return;
-    }
-    const params = new URLSearchParams({
-      pickupDate: booking.pickupDate,
-      pickupTime: booking.pickupTime,
-      pickupLocation: booking.pickupLocation,
-      dropoffLocation: booking.dropoffLocation,
-      specialRequests: booking.specialRequests,
-    });
-    router.push(`/confirmation?${params.toString()}`);
-  };
-
   const handleContact = async () => {
     if (!contactForm.name || !contactForm.email || !contactForm.subject || !contactForm.message) {
       setContactStatus({ type: "error", message: "Please complete all contact fields." });
@@ -223,7 +138,7 @@ export default function Home() {
     <li><a href="#about">About</a></li>
     <li><a href="#contact">Contact</a></li>
   </ul>
-  <a href="#book" className="nav-cta">Reserve Now</a>
+  <a href="/reserve" className="nav-cta">Reserve Now</a>
   <button
     type="button"
     className={`nav-toggle${mobileNavOpen ? " nav-toggle--open" : ""}`}
@@ -262,7 +177,7 @@ export default function Home() {
       </a>
     </li>
     <li>
-      <a href="#book" onClick={() => setMobileNavOpen(false)}>
+      <a href="/reserve" onClick={() => setMobileNavOpen(false)}>
         Book
       </a>
     </li>
@@ -282,7 +197,7 @@ export default function Home() {
       </a>
     </li>
   </ul>
-  <a href="#book" className="nav-cta nav-mobile-cta" onClick={() => setMobileNavOpen(false)}>
+  <a href="/reserve" className="nav-cta nav-mobile-cta" onClick={() => setMobileNavOpen(false)}>
     Reserve Now
   </a>
 </div>
@@ -295,7 +210,7 @@ export default function Home() {
     <h1 className="hero-title">Arrive in<br /><em>Absolute</em><br />Elegance</h1>
     <p className="hero-sub">Professional chauffeurs · Immaculate fleet · Uncompromising standards</p>
     <div className="hero-btns">
-      <a href="#book" className="btn-primary">Reserve Your Ride</a>
+      <a href="/reserve" className="btn-primary">Reserve Your Ride</a>
       <a href="#fleet" className="btn-outline">View Our Fleet</a>
     </div>
   </div>
@@ -458,67 +373,6 @@ export default function Home() {
           <div className="services-img-accent"></div>
           <div className="services-img-label">Est. 2013 · New York</div>
         </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-{/* BOOK */}
-<section id="book">
-  <div className="container">
-    <div className="book-layout">
-      <div className="book-info">
-        <span className="section-label reveal">Reservations</span>
-        <h2 className="book-info-title reveal reveal-delay-1">Reserve<br />Your <em>Ride</em><br />Today</h2>
-        <div className="divider reveal reveal-delay-2"></div>
-        <p className="book-info-text reveal reveal-delay-3">Every booking is confirmed within minutes, backed by our guarantee of punctuality and discretion. Your comfort is our command.</p>
-        <div className="book-feature reveal reveal-delay-1">
-          <div className="book-feature-icon">✈</div>
-          <div className="book-feature-text">
-            <h4>Flight Tracking Included</h4>
-            <p>We monitor your flight in real-time. No extra charges for delays.</p>
-          </div>
-        </div>
-        <div className="book-feature reveal reveal-delay-2">
-          <div className="book-feature-icon">◆</div>
-          <div className="book-feature-text">
-            <h4>Flat Rate Pricing</h4>
-            <p>Transparent pricing, no surge, no surprises. Quoted upfront.</p>
-          </div>
-        </div>
-        <div className="book-feature reveal reveal-delay-3">
-          <div className="book-feature-icon">☎</div>
-          <div className="book-feature-text">
-            <h4>24/7 Concierge</h4>
-            <p>A real person, available around the clock, every day of the year.</p>
-          </div>
-        </div>
-      </div>
-      <div className="book-form reveal reveal-delay-2">
-        <h3 className="form-title">Book a Reservation</h3>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Pick-Up Date</label>
-            <input type="date" value={booking.pickupDate} onChange={(e) => setBooking((prev) => ({ ...prev, pickupDate: e.target.value }))} />
-          </div>
-          <div className="form-group">
-            <label>Pick-Up Time</label>
-            <input type="time" value={booking.pickupTime} onChange={(e) => setBooking((prev) => ({ ...prev, pickupTime: e.target.value }))} />
-          </div>
-        </div>
-        <div className="form-group">
-          <label>Pick-Up Location</label>
-          <input ref={pickupInputRef} type="text" placeholder="Address, hotel, or airport terminal" value={booking.pickupLocation} onChange={(e) => setBooking((prev) => ({ ...prev, pickupLocation: e.target.value }))} />
-        </div>
-        <div className="form-group">
-          <label>Drop-Off Location</label>
-          <input ref={dropoffInputRef} type="text" placeholder="Address, hotel, or airport terminal" value={booking.dropoffLocation} onChange={(e) => setBooking((prev) => ({ ...prev, dropoffLocation: e.target.value }))} />
-        </div>
-        <div className="form-group">
-          <label>Special Requests</label>
-          <textarea placeholder="Child seat, extra stops, preferred route..." value={booking.specialRequests} onChange={(e) => setBooking((prev) => ({ ...prev, specialRequests: e.target.value }))}></textarea>
-        </div>
-        <button className="form-submit" onClick={handleBooking}>Explore Prices →</button>
       </div>
     </div>
   </div>
@@ -711,7 +565,7 @@ export default function Home() {
           <li><a href="#fleet">Our Fleet</a></li>
           <li><a href="#testimonials">Reviews</a></li>
           <li><a href="#contact">Contact</a></li>
-          <li><a href="#book">Book Now</a></li>
+          <li><a href="/reserve">Book Now</a></li>
         </ul>
       </div>
       <div className="footer-col">

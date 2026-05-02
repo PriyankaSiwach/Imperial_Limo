@@ -474,10 +474,57 @@
   }
 
   /* BOOKING */
+  .book-trip-toggle {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .book-trip-toggle-label {
+    width: 100%;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: -8px;
+  }
+  .book-trip-toggle-btn {
+    flex: 1;
+    min-width: 120px;
+    padding: 14px 18px;
+    font-family: var(--font-body);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+  .book-trip-toggle-btn:hover {
+    color: var(--white);
+    border-color: rgba(201, 168, 76, 0.45);
+  }
+  .book-trip-toggle-btn--active {
+    color: var(--black);
+    background: var(--gold);
+    border-color: var(--gold);
+  }
+  .book-trip-toggle-btn--active:hover {
+    color: var(--black);
+    background: var(--gold-light);
+    border-color: var(--gold-light);
+  }
+
+  /* overflow-y visible so PlaceAutocompleteElement suggestion lists are not clipped */
   #book {
     background: var(--dark);
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
   }
   #book::before {
     content: '';
@@ -498,6 +545,14 @@
     background: var(--card);
     border: 1px solid var(--border);
     padding: 56px;
+    overflow: visible;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Legacy Places Autocomplete attaches .pac-container to body — keep above fixed nav & form layers */
+  .pac-container {
+    z-index: 10050 !important;
   }
   .form-title {
     font-family: var(--font-display);
@@ -967,6 +1022,57 @@
     background: var(--card);
     border: 1px solid var(--border);
     padding: 40px;
+  }
+  .confirmation-hourly-rate-panel {
+    margin-bottom: 28px;
+    padding: 20px 22px;
+    background: #151515;
+    border: 1px solid rgba(201, 168, 76, 0.35);
+    border-radius: 2px;
+  }
+  .confirmation-hourly-rate-heading {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 400;
+    color: var(--white);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 14px;
+  }
+  .confirmation-hourly-rate-line {
+    font-size: 13px;
+    color: var(--gold);
+    margin: 0 0 10px;
+    line-height: 1.7;
+  }
+  .confirmation-hourly-rate-range {
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .confirmation-hourly-rate-note {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.65;
+    margin: 0 0 16px;
+    font-weight: 300;
+  }
+  .confirmation-hourly-rate-highlight {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .confirmation-hourly-rate-label {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .confirmation-hourly-rate-amount {
+    font-size: 14px;
+    color: var(--gold);
+    line-height: 1.5;
   }
   .confirmation-summary p,
   .confirmation-breakdown p {
@@ -1539,7 +1645,6 @@
     .form-group textarea {
       padding: 14px 16px;
     }
-
     .testimonial-card {
       padding: 28px 20px;
     }
