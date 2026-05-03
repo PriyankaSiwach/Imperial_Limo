@@ -1,18 +1,38 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clampDurationHours, MAX_HOURLY_DURATION, MIN_HOURLY_DURATION, type TripType } from "@/lib/booking-price";
-import { loadGoogleMapsApi } from "@/lib/load-google-maps";
+import { ensureGooglePlacesAutocomplete } from "@/lib/load-google-maps";
+
+/** Avoid bare `google` (ReferenceError in strict bundles before / without Maps on `globalThis`). */
+function readGoogleMapsFromGlobal(): typeof google | undefined {
+  return (globalThis as unknown as { google?: typeof google }).google;
+}
 
 export default function ReservePage() {
   const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [tripType, setTripType] = useState<TripType>("oneway");
+
   const pickupInputRef = useRef<HTMLInputElement | null>(null);
   const dropoffInputRef = useRef<HTMLInputElement | null>(null);
-  const tripTypeRef = useRef(tripType);
-  tripTypeRef.current = tripType;
+  const pickupAutocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const dropoffAutocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  /** Bumped when an address input mounts — retriggers bind after `await` with fresh `ref.current`. */
+  const [placesAttachNonce, setPlacesAttachNonce] = useState(0);
+  const onPickupAddressRef = useCallback((el: HTMLInputElement | null) => {
+    pickupInputRef.current = el;
+    if (el) setPlacesAttachNonce((n) => n + 1);
+  }, []);
+  const onDropoffAddressRef = useCallback((el: HTMLInputElement | null) => {
+    dropoffInputRef.current = el;
+    if (el) setPlacesAttachNonce((n) => n + 1);
+  }, []);
+
+  /** Maps + Places library finished loading — separate from bind so bind re-runs when this flips true. */
+  const [mapsPlacesBootstrapped, setMapsPlacesBootstrapped] = useState(false);
+
   const [booking, setBooking] = useState({
     pickupDate: "",
     pickupTime: "",
@@ -46,55 +66,104 @@ export default function ReservePage() {
     }
   }, []);
 
+  /** Load Maps + Places once on page load (independent of trip type / address fields). */
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
-    if (!apiKey) return;
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || "";
+    if (!apiKey) {
+      console.error(
+        "[Reserve] Missing NEXT_PUBLIC_GOOGLE_MAPS_API_KEY. Add it to .env.local and restart the dev server (fully stop npm run dev, then start again)."
+      );
+      return;
+    }
 
     let cancelled = false;
-    let pickupAc: google.maps.places.Autocomplete | null = null;
-    let dropoffAc: google.maps.places.Autocomplete | null = null;
-
     (async () => {
-      await loadGoogleMapsApi(apiKey);
-      if (cancelled) return;
-      await google.maps.importLibrary("places");
-      if (cancelled) return;
-      if (!google.maps.places?.Autocomplete) return;
-
-      const pickupEl = pickupInputRef.current;
-      if (pickupEl) {
-        pickupAc = new google.maps.places.Autocomplete(pickupEl, {
-          fields: ["formatted_address", "name", "geometry"],
-          types: ["geocode"],
-        });
-        pickupAc.addListener("place_changed", () => {
-          const place = pickupAc!.getPlace();
-          const formatted = place?.formatted_address || place?.name || pickupEl.value;
-          setBooking((prev) => ({ ...prev, pickupLocation: formatted }));
-        });
+      try {
+        await ensureGooglePlacesAutocomplete(apiKey);
+        if (cancelled) return;
+        const gMaps = readGoogleMapsFromGlobal();
+        if (!gMaps?.maps?.places?.Autocomplete) {
+          console.error(
+            "[Reserve] Google Places failed to load: google.maps.places.Autocomplete is not available after script load."
+          );
+          return;
+        }
+        setMapsPlacesBootstrapped(true);
+        setPlacesAttachNonce((n) => n + 1);
+      } catch (e) {
+        console.error("[Reserve] Google Places failed to load:", e);
       }
+    })();
 
-      // Drop-off Places suggestions only for one-way (read tripType after awaits via ref).
-      const dropEl = tripTypeRef.current === "oneway" ? dropoffInputRef.current : null;
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /**
+   * Attach Autocomplete synchronously (no await) whenever the library is ready + DOM refs exist.
+   * Re-runs when `mapsPlacesBootstrapped` becomes true (fixes one-way first load: no dependency on
+   * toggling "By the hour" to trigger a second async bind).
+   */
+  useEffect(() => {
+    const gMaps = readGoogleMapsFromGlobal();
+    const AutocompleteCtor = gMaps?.maps?.places?.Autocomplete;
+    if (!mapsPlacesBootstrapped || typeof AutocompleteCtor !== "function") return;
+
+    const detach = () => {
+      const g = readGoogleMapsFromGlobal();
+      if (!g?.maps?.event) return;
+      if (pickupAutocompleteRef.current) {
+        g.maps.event.clearInstanceListeners(pickupAutocompleteRef.current);
+        pickupAutocompleteRef.current = null;
+      }
+      if (dropoffAutocompleteRef.current) {
+        g.maps.event.clearInstanceListeners(dropoffAutocompleteRef.current);
+        dropoffAutocompleteRef.current = null;
+      }
+    };
+
+    detach();
+
+    const pickupEl = pickupInputRef.current;
+    if (!pickupEl) {
+      return () => {
+        detach();
+      };
+    }
+
+    const attachOptions = {
+      fields: ["formatted_address", "name", "geometry"] as string[],
+      types: ["geocode"] as string[],
+    };
+
+    pickupAutocompleteRef.current = new AutocompleteCtor(pickupEl, attachOptions);
+    pickupAutocompleteRef.current.addListener("place_changed", () => {
+      const ac = pickupAutocompleteRef.current;
+      if (!ac) return;
+      const place = ac.getPlace();
+      const formatted = place?.formatted_address || place?.name || pickupEl.value;
+      setBooking((prev) => ({ ...prev, pickupLocation: formatted }));
+    });
+
+    if (tripType === "oneway") {
+      const dropEl = dropoffInputRef.current;
       if (dropEl) {
-        dropoffAc = new google.maps.places.Autocomplete(dropEl, {
-          fields: ["formatted_address", "name", "geometry"],
-          types: ["geocode"],
-        });
-        dropoffAc.addListener("place_changed", () => {
-          const place = dropoffAc!.getPlace();
+        dropoffAutocompleteRef.current = new AutocompleteCtor(dropEl, attachOptions);
+        dropoffAutocompleteRef.current.addListener("place_changed", () => {
+          const ac = dropoffAutocompleteRef.current;
+          if (!ac) return;
+          const place = ac.getPlace();
           const formatted = place?.formatted_address || place?.name || dropEl.value;
           setBooking((prev) => ({ ...prev, dropoffLocation: formatted }));
         });
       }
-    })().catch(() => {});
+    }
 
     return () => {
-      cancelled = true;
-      if (pickupAc) google.maps.event.clearInstanceListeners(pickupAc);
-      if (dropoffAc) google.maps.event.clearInstanceListeners(dropoffAc);
+      detach();
     };
-  }, [tripType]);
+  }, [mapsPlacesBootstrapped, tripType, placesAttachNonce]);
 
   useEffect(() => {
     const nav = document.getElementById("navbar");
@@ -252,8 +321,8 @@ export default function ReservePage() {
         </a>
       </div>
 
-      {/* BOOK */}
-      <section id="book">
+      {/* BOOK — class reserve-page scopes mobile layout (form first) in globals.css */}
+      <section id="book" className="reserve-page">
         <div className="container">
           <div className="book-layout">
             <div className="book-info">
@@ -324,7 +393,7 @@ export default function ReservePage() {
               <div className="form-group">
                 <label>Pick-Up Location</label>
                 <input
-                  ref={pickupInputRef}
+                  ref={onPickupAddressRef}
                   type="text"
                   name="pickupLocation"
                   autoComplete="off"
@@ -337,7 +406,7 @@ export default function ReservePage() {
                 <div className="form-group">
                   <label>Drop-Off Location</label>
                   <input
-                    ref={dropoffInputRef}
+                    ref={onDropoffAddressRef}
                     type="text"
                     name="dropoffLocation"
                     autoComplete="off"

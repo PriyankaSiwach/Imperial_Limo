@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(req: NextRequest) {
   const origin = req.nextUrl.searchParams.get("origin");
   const destination = req.nextUrl.searchParams.get("destination");
-  const key = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
 
   if (!origin || !destination || !key) {
     return NextResponse.json({ miles: null }, { status: 400 });

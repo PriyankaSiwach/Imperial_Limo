@@ -70,7 +70,7 @@ export function detectFlatRoute(pickup: string, dropoff: string): keyof typeof F
 }
 
 async function fetchDrivingMiles(origin: string, destination: string): Promise<number | null> {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
   if (!key) return null;
 
   const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&units=imperial&key=${key}`;

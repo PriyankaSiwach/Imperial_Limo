@@ -1,36 +1,70 @@
-/** Loads Maps JS API once (recommended `loading=async` + dynamic `importLibrary`). */
+/**
+ * Loads the Google Maps JavaScript API with the Places library once.
+ * Script URL: https://maps.googleapis.com/maps/api/js?key=…&libraries=places
+ */
 
-let loadPromise: Promise<void> | null = null;
+const SCRIPT_ID = "imperial-google-maps-places";
 
-export function loadGoogleMapsApi(apiKey: string): Promise<void> {
+let inflight: Promise<void> | null = null;
+
+function hasPlacesAutocomplete(): boolean {
+  return (
+    typeof (globalThis as unknown as { google?: typeof google }).google?.maps?.places?.Autocomplete === "function"
+  );
+}
+
+/**
+ * Injects the Maps script (with `libraries=places`) at most once and resolves when
+ * `google.maps.places.Autocomplete` is available.
+ */
+export function ensureGooglePlacesAutocomplete(apiKey: string): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
 
   const key = apiKey.trim();
-  if (!key) return Promise.reject(new Error("Missing NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"));
-
-  if (window.google?.maps?.importLibrary) return Promise.resolve();
-
-  if (!loadPromise) {
-    loadPromise = new Promise((resolve, reject) => {
-      const id = "google-maps-js-api";
-      let script = document.getElementById(id) as HTMLScriptElement | null;
-      if (!script) {
-        script = document.createElement("script");
-        script.id = id;
-        script.async = true;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async&v=weekly`;
-        script.onerror = () => reject(new Error("Google Maps JavaScript API failed to load"));
-        document.head.appendChild(script);
-      }
-
-      const finish = () => resolve();
-      if (window.google?.maps?.importLibrary) {
-        finish();
-        return;
-      }
-      script.addEventListener("load", finish, { once: true });
-    });
+  if (!key) {
+    return Promise.reject(new Error("Missing NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"));
   }
 
-  return loadPromise;
+  if (hasPlacesAutocomplete()) return Promise.resolve();
+
+  inflight ??= new Promise<void>((resolve, reject) => {
+    const finishOk = () => {
+      if (hasPlacesAutocomplete()) resolve();
+      else reject(new Error("Google Maps loaded but google.maps.places.Autocomplete is not available"));
+    };
+
+    /** Older loader tag (no `libraries=places`) — remove so we can inject the correct script. */
+    document.getElementById("google-maps-js-api")?.remove();
+
+    const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null;
+    if (existing) {
+      if (hasPlacesAutocomplete()) {
+        finishOk();
+        return;
+      }
+      existing.addEventListener("load", () => finishOk(), { once: true });
+      existing.addEventListener(
+        "error",
+        () => reject(new Error("Google Maps JavaScript API failed to load")),
+        { once: true }
+      );
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = SCRIPT_ID;
+    script.async = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
+    script.addEventListener("load", () => finishOk(), { once: true });
+    script.addEventListener(
+      "error",
+      () => reject(new Error("Google Maps JavaScript API failed to load")),
+      { once: true }
+    );
+    document.head.appendChild(script);
+  }).finally(() => {
+    inflight = null;
+  });
+
+  return inflight;
 }
