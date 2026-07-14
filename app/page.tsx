@@ -136,6 +136,7 @@ export default function Home() {
     <li><a href="#fleet">Fleet</a></li>
     <li><a href="#services">Services</a></li>
     <li><a href="#about">About</a></li>
+    <li><a href="/blog">Blog</a></li>
     <li><a href="#contact">Contact</a></li>
   </ul>
   <a href="/reserve" className="nav-cta">Reserve Now</a>
@@ -189,6 +190,11 @@ export default function Home() {
     <li>
       <a href="#testimonials" onClick={() => setMobileNavOpen(false)}>
         Reviews
+      </a>
+    </li>
+    <li>
+      <a href="/blog" onClick={() => setMobileNavOpen(false)}>
+        Blog
       </a>
     </li>
     <li>
@@ -564,6 +570,7 @@ export default function Home() {
           <li><a href="#about">About Us</a></li>
           <li><a href="#fleet">Our Fleet</a></li>
           <li><a href="#testimonials">Reviews</a></li>
+          <li><a href="/blog">Blog</a></li>
           <li><a href="#contact">Contact</a></li>
           <li><a href="/reserve">Book Now</a></li>
         </ul>

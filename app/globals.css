@@ -1068,6 +1068,28 @@
   }
   .footer-legal a:hover { color: var(--gold); }
 
+  /* SORO BLOG */
+  .blog-page {
+    min-height: 100vh;
+    width: 100%;
+    padding: 150px 0 80px;
+    background: var(--deep);
+    overflow-x: hidden;
+  }
+  .blog-header {
+    margin-bottom: 48px;
+  }
+  .soro-blog-embed {
+    width: 100%;
+    min-width: 0;
+    min-height: 360px;
+    overflow-x: hidden;
+  }
+  .soro-blog-embed iframe,
+  .soro-blog-embed img {
+    max-width: 100%;
+  }
+
   .confirmation-page {
     min-height: 100vh;
     padding: 140px 0 80px;
@@ -1782,6 +1804,15 @@
 
     .confirmation-page {
       padding: 100px 0 48px;
+    }
+    .blog-page {
+      padding: 110px 0 56px;
+    }
+    .blog-header {
+      margin-bottom: 32px;
+    }
+    .soro-blog-embed {
+      min-height: 280px;
     }
     .confirmation-wrap {
       grid-template-columns: 1fr;

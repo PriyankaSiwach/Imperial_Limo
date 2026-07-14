@@ -252,6 +252,9 @@ export default function ReservePage() {
             <a href="/#about">About</a>
           </li>
           <li>
+            <a href="/blog">Blog</a>
+          </li>
+          <li>
             <a href="/#contact">Contact</a>
           </li>
         </ul>
@@ -308,6 +311,11 @@ export default function ReservePage() {
           <li>
             <a href="/#testimonials" onClick={() => setMobileNavOpen(false)}>
               Reviews
+            </a>
+          </li>
+          <li>
+            <a href="/blog" onClick={() => setMobileNavOpen(false)}>
+              Blog
             </a>
           </li>
           <li>
@@ -506,6 +514,9 @@ export default function ReservePage() {
                 </li>
                 <li>
                   <a href="/#testimonials">Reviews</a>
+                </li>
+                <li>
+                  <a href="/blog">Blog</a>
                 </li>
                 <li>
                   <a href="/#contact">Contact</a>
