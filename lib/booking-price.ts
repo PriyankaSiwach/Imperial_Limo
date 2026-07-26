@@ -28,21 +28,21 @@ export function clampDurationHours(value: number): number {
 }
 
 const FLAT_RATES = {
-  jfk: { eclass: 143, escalade: 210, suburban: 180, sclass: 280, bmw7: 280 },
-  ewr: { eclass: 143, escalade: 210, suburban: 180, sclass: 280, bmw7: 280 },
-  hpn: { eclass: 242, sclass: 380, suburban: 300, escalade: 300, bmw7: 380 },
-  lga: { eclass: 121, sclass: 220, escalade: 170, suburban: 150, bmw7: 220 },
+  jfk: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
+  ewr: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
+  hpn: { eclass: 218, sclass: 342, suburban: 270, escalade: 270, bmw7: 342 },
+  lga: { eclass: 109, sclass: 198, escalade: 153, suburban: 135, bmw7: 198 },
 } as const;
 
 const TAX_MULTIPLIER = 1.08;
 
 const PER_MILE: Record<VehicleKey, number> = {
-  eclass: 4.4,
-  sclass: 7,
-  escalade: 5.5,
-  suburban: 5,
-  bmw7: 7,
-  testride: 1,
+  eclass: 3.96,
+  sclass: 6.3,
+  escalade: 4.95,
+  suburban: 4.5,
+  bmw7: 6.3,
+  testride: 0.9,
 };
 
 function containsManhattan(text: string): boolean {

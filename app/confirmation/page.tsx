@@ -16,12 +16,12 @@ import {
 } from "@/lib/booking-price";
 
 const VEHICLE_META: Record<VehicleKey, { label: string; image: string; perMile: number }> = {
-  eclass: { label: "Mercedes-Benz E-Class", image: "/images/mercedes_E.png", perMile: 4.4 },
-  sclass: { label: "Mercedes-Benz S Class- Executive Sedan", image: "/images/mercedes1.png", perMile: 7 },
-  escalade: { label: "Cadillac Escalade ESV-Van/SUV", image: "/images/escalade2.png", perMile: 5.5 },
-  suburban: { label: "Chevrolet Suburban- Van/SUV", image: "/images/suburban.png", perMile: 5 },
-  bmw7: { label: "BMW 7 series- Executive Sedan", image: "/images/bmw3.png", perMile: 7 },
-  testride: { label: "Test Ride", image: "/images/mercedes_E.png", perMile: 1 },
+  eclass: { label: "Mercedes-Benz E-Class", image: "/images/mercedes_E.png", perMile: 3.96 },
+  sclass: { label: "Mercedes-Benz S Class- Executive Sedan", image: "/images/mercedes1.png", perMile: 6.3 },
+  escalade: { label: "Cadillac Escalade ESV-Van/SUV", image: "/images/escalade2.png", perMile: 4.95 },
+  suburban: { label: "Chevrolet Suburban- Van/SUV", image: "/images/suburban.png", perMile: 4.5 },
+  bmw7: { label: "BMW 7 series- Executive Sedan", image: "/images/bmw3.png", perMile: 6.3 },
+  testride: { label: "Test Ride", image: "/images/mercedes_E.png", perMile: 0.9 },
 };
 
 function vehicleKeysForConfirmation(): VehicleKey[] {
@@ -40,10 +40,10 @@ function testRidePriceRow(): { base: number; total: number; note: string } {
 }
 
 const FLAT_RATES = {
-  jfk: { eclass: 143, escalade: 210, suburban: 180, sclass: 280, bmw7: 280 },
-  ewr: { eclass: 143, escalade: 210, suburban: 180, sclass: 280, bmw7: 280 },
-  hpn: { eclass: 242, sclass: 380, suburban: 300, escalade: 300, bmw7: 380 },
-  lga: { eclass: 121, sclass: 220, escalade: 170, suburban: 150, bmw7: 220 },
+  jfk: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
+  ewr: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
+  hpn: { eclass: 218, sclass: 342, suburban: 270, escalade: 270, bmw7: 342 },
+  lga: { eclass: 109, sclass: 198, escalade: 153, suburban: 135, bmw7: 198 },
 } as const;
 const TAX_MULTIPLIER = 1.08;
 
