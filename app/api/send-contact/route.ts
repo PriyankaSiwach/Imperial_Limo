@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   try {
     const adminSend = await transporter.sendMail({
     from: gmailUser,
-    to: "imperiallimony@gmail.com",
+    to: "info@imperiallimony.com",
     subject: `New Contact Message — ${subject} — ${name}`,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">

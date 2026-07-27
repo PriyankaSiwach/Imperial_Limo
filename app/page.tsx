@@ -499,7 +499,7 @@ export default function Home() {
           <div className="contact-icon">✉</div>
           <div>
             <h4>Email</h4>
-            <p>imperiallimony@gmail.com<br />reservations.imperiallimo@gmail.com</p>
+            <p>info@imperiallimony.com<br />reservations.imperiallimo@gmail.com</p>
           </div>
         </div>
         <div className="contact-item reveal reveal-delay-3">
@@ -579,7 +579,7 @@ export default function Home() {
         <h5>Contact</h5>
         <ul>
           <li><a href="tel:15166149134">1. 5166149134</a></li>
-          <li><a href="mailto:imperiallimony@gmail.com">imperiallimony@gmail.com</a></li>
+          <li><a href="mailto:info@imperiallimony.com">info@imperiallimony.com</a></li>
           <li><a href="mailto:reservations.imperiallimo@gmail.com">reservations.imperiallimo@gmail.com</a></li>
           <li><a href="#">New York, NY 10001</a></li>
           <li><a href="#">JFK · LGA · EWR · Hampton</a></li>

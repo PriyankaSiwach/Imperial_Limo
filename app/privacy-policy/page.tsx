@@ -50,7 +50,7 @@ export default function PrivacyPolicyPage() {
             <strong>Contact:</strong>{" "}
             <span className="confirmation-value">
               For privacy questions or requests, contact{" "}
-              <a href="mailto:imperiallimony@gmail.com">imperiallimony@gmail.com</a>.
+              <a href="mailto:info@imperiallimony.com">info@imperiallimony.com</a>.
             </span>
           </p>
         </div>

@@ -533,7 +533,7 @@ export default function ReservePage() {
                   <a href="tel:15166149134">1. 5166149134</a>
                 </li>
                 <li>
-                  <a href="mailto:imperiallimony@gmail.com">imperiallimony@gmail.com</a>
+                  <a href="mailto:info@imperiallimony.com">info@imperiallimony.com</a>
                 </li>
                 <li>
                   <a href="mailto:reservations.imperiallimo@gmail.com">reservations.imperiallimo@gmail.com</a>
