@@ -1,5 +1,7 @@
 /** Shared server/client-safe pricing for reservations (must match confirmation UI). */
 
+import { fetchDrivingMiles } from "@/lib/driving-miles";
+
 export type VehicleKey = "eclass" | "sclass" | "escalade" | "suburban" | "bmw7" | "testride";
 
 export type TripType = "oneway" | "hourly";
@@ -21,22 +23,12 @@ export const TEST_RIDE_BASE_USD = 2;
 export const MIN_HOURLY_DURATION = 2;
 export const MAX_HOURLY_DURATION = 24;
 
-export function clampDurationHours(value: number): number {
-  const n = Math.round(Number(value));
-  if (!Number.isFinite(n)) return MIN_HOURLY_DURATION;
-  return Math.min(MAX_HOURLY_DURATION, Math.max(MIN_HOURLY_DURATION, n));
-}
+/** One-way base fare before per-mile and tax (airport additive pricing + non-airport floor). */
+export const BASE_FARE_USD = 95;
 
-const FLAT_RATES = {
-  jfk: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
-  ewr: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
-  hpn: { eclass: 218, sclass: 342, suburban: 270, escalade: 270, bmw7: 342 },
-  lga: { eclass: 109, sclass: 198, escalade: 153, suburban: 135, bmw7: 198 },
-} as const;
+export const TAX_MULTIPLIER = 1.08;
 
-const TAX_MULTIPLIER = 1.08;
-
-const PER_MILE: Record<VehicleKey, number> = {
+export const PER_MILE: Record<VehicleKey, number> = {
   eclass: 3.96,
   sclass: 6.3,
   escalade: 4.95,
@@ -45,18 +37,62 @@ const PER_MILE: Record<VehicleKey, number> = {
   testride: 0.9,
 };
 
+const FLAT_RATES = {
+  jfk: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
+  ewr: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
+  hpn: { eclass: 218, sclass: 342, suburban: 270, escalade: 270, bmw7: 342 },
+  lga: { eclass: 109, sclass: 198, escalade: 153, suburban: 135, bmw7: 198 },
+} as const;
+
+export type AirportKey = keyof typeof FLAT_RATES;
+
+export function clampDurationHours(value: number): number {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return MIN_HOURLY_DURATION;
+  return Math.min(MAX_HOURLY_DURATION, Math.max(MIN_HOURLY_DURATION, n));
+}
+
 function containsManhattan(text: string): boolean {
   return text.toLowerCase().includes("manhattan");
 }
 
-const BASE_FARE_USD = 95;
+/** Detect JFK / LGA / EWR / HPN from free-form Places formatted addresses. */
+export function detectAirport(text: string): AirportKey | null {
+  const value = text.toLowerCase().replace(/\./g, " ").replace(/\s+/g, " ").trim();
 
-function detectAirport(text: string): keyof typeof FLAT_RATES | null {
-  const value = text.toLowerCase();
-  if (value.includes("jfk") || value.includes("john f. kennedy")) return "jfk";
-  if (value.includes("ewr") || value.includes("newark")) return "ewr";
-  if (value.includes("hpn") || value.includes("white plains") || value.includes("westchester")) return "hpn";
-  if (value.includes("lga") || value.includes("laguardia")) return "lga";
+  // ZIP codes commonly returned by Places for these airports (formattedAddress often omits the name).
+  if (/\b11430\b/.test(value)) return "jfk";
+  if (/\b11371\b/.test(value)) return "lga";
+  if (/\b07114\b/.test(value) || /\b07105\b/.test(value)) return "ewr";
+  if (/\b10604\b/.test(value)) return "hpn";
+
+  if (
+    value.includes("jfk") ||
+    value.includes("john f kennedy") ||
+    value.includes("kennedy international") ||
+    value.includes("kennedy airport")
+  ) {
+    return "jfk";
+  }
+  if (
+    value.includes("ewr") ||
+    value.includes("newark liberty") ||
+    value.includes("newark airport") ||
+    (value.includes("newark") && value.includes("airport"))
+  ) {
+    return "ewr";
+  }
+  if (
+    value.includes("hpn") ||
+    value.includes("westchester county airport") ||
+    value.includes("white plains airport") ||
+    (value.includes("westchester") && value.includes("airport"))
+  ) {
+    return "hpn";
+  }
+  if (value.includes("lga") || value.includes("laguardia") || value.includes("la guardia")) {
+    return "lga";
+  }
   return null;
 }
 
@@ -65,7 +101,7 @@ export function involvesAirport(pickup: string, dropoff: string): boolean {
   return detectAirport(pickup) !== null || detectAirport(dropoff) !== null;
 }
 
-export function detectFlatRoute(pickup: string, dropoff: string): keyof typeof FLAT_RATES | null {
+export function detectFlatRoute(pickup: string, dropoff: string): AirportKey | null {
   const pickupAirport = detectAirport(pickup);
   const dropoffAirport = detectAirport(dropoff);
   const pickupIsManhattan = containsManhattan(pickup);
@@ -76,22 +112,19 @@ export function detectFlatRoute(pickup: string, dropoff: string): keyof typeof F
   return null;
 }
 
-async function fetchDrivingMiles(origin: string, destination: string): Promise<number | null> {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
-  if (!key) return null;
-
-  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&units=imperial&key=${key}`;
-  const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
-  if (!res.ok) return null;
-
-  const data = (await res.json()) as {
-    rows?: { elements?: { status: string; distance?: { value: number } }[] }[];
-  };
-  const element = data?.rows?.[0]?.elements?.[0];
-  if (!element || element.status !== "OK" || !element.distance?.value) return null;
-
-  const miles = Number(element.distance.value) / 1609.344;
-  return Number.isFinite(miles) ? miles : null;
+/**
+ * Airport one-way (non-Manhattan-flat): base + miles×rate, before tax.
+ * Non-airport one-way: max(base, miles×rate), before tax.
+ */
+export function oneWayFareBeforeTax(params: {
+  miles: number;
+  vehicleKey: VehicleKey;
+  airportTrip: boolean;
+}): number {
+  const rate = PER_MILE[params.vehicleKey];
+  const mileage = Math.round(Math.max(0, params.miles) * rate);
+  if (params.airportTrip) return BASE_FARE_USD + mileage;
+  return Math.max(BASE_FARE_USD, mileage);
 }
 
 export type ComputeTotalUsdParams =
@@ -107,6 +140,8 @@ export type ComputeTotalUsdParams =
       pickupLocation: string;
       dropoffLocation: string;
       vehicleKey: VehicleKey;
+      /** Forwarded browser Referer for Routes API when the Maps key is referrer-restricted. */
+      referer?: string | null;
     };
 
 /** Total charged in USD (integer dollars after tax), matching confirmation page. */
@@ -128,14 +163,16 @@ export async function computeTotalUsd(params: ComputeTotalUsdParams): Promise<nu
     return Math.round(flat * TAX_MULTIPLIER);
   }
 
-  const miles = await fetchDrivingMiles(params.pickupLocation, params.dropoffLocation);
-  const m = miles ?? 0;
-  const rate = PER_MILE[params.vehicleKey];
-  const mileage = Math.round(m * rate);
-  // Airport addresses: base + per-mile (then tax). Other routes keep the $95 floor.
-  const estimated = involvesAirport(params.pickupLocation, params.dropoffLocation)
-    ? BASE_FARE_USD + mileage
-    : Math.max(BASE_FARE_USD, mileage);
+  const miles =
+    (await fetchDrivingMiles(params.pickupLocation, params.dropoffLocation, {
+      referer: params.referer,
+    })) ?? 0;
+  const airportTrip = involvesAirport(params.pickupLocation, params.dropoffLocation);
+  const estimated = oneWayFareBeforeTax({
+    miles,
+    vehicleKey: params.vehicleKey,
+    airportTrip,
+  });
   return Math.round(estimated * TAX_MULTIPLIER);
 }
 
@@ -147,3 +184,6 @@ export function isVehicleKey(v: string): v is VehicleKey {
 export function totalUsdToStripeCents(usd: number): number {
   return Math.round(usd * 100);
 }
+
+/** Flat Manhattan↔airport rates (exported for confirmation UI). */
+export const AIRPORT_FLAT_RATES = FLAT_RATES;

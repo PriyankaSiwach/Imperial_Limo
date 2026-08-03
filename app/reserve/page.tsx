@@ -19,7 +19,15 @@ async function addressFromPlaceSelect(
 ): Promise<string> {
   const place = event.placePrediction.toPlace();
   await place.fetchFields({ fields: ["formattedAddress", "displayName"] });
-  return place.formattedAddress || place.displayName || fallback;
+  const formatted = place.formattedAddress?.trim() || "";
+  const name = place.displayName?.trim() || "";
+  // Places often returns airport formattedAddress without the airport name (e.g. "Queens, NY 11430").
+  // Keep the display name so airport pricing detection and distance geocoding stay accurate.
+  if (name && formatted) {
+    if (formatted.toLowerCase().includes(name.toLowerCase())) return formatted;
+    return `${name}, ${formatted}`;
+  }
+  return formatted || name || fallback;
 }
 
 function mountPlaceAutocomplete(

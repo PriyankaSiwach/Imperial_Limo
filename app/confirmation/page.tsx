@@ -11,17 +11,24 @@ import {
   MAX_HOURLY_DURATION,
   MIN_HOURLY_DURATION,
   TEST_RIDE_BASE_USD,
+  BASE_FARE_USD,
+  TAX_MULTIPLIER,
+  PER_MILE,
+  AIRPORT_FLAT_RATES,
+  detectFlatRoute,
+  involvesAirport,
+  oneWayFareBeforeTax,
   type TripType,
   type VehicleKey,
 } from "@/lib/booking-price";
 
 const VEHICLE_META: Record<VehicleKey, { label: string; image: string; perMile: number }> = {
-  eclass: { label: "Mercedes-Benz E-Class", image: "/images/mercedes_E.png", perMile: 3.96 },
-  sclass: { label: "Mercedes-Benz S Class- Executive Sedan", image: "/images/mercedes1.png", perMile: 6.3 },
-  escalade: { label: "Cadillac Escalade ESV-Van/SUV", image: "/images/escalade2.png", perMile: 4.95 },
-  suburban: { label: "Chevrolet Suburban- Van/SUV", image: "/images/suburban.png", perMile: 4.5 },
-  bmw7: { label: "BMW 7 series- Executive Sedan", image: "/images/bmw3.png", perMile: 6.3 },
-  testride: { label: "Test Ride", image: "/images/mercedes_E.png", perMile: 0.9 },
+  eclass: { label: "Mercedes-Benz E-Class", image: "/images/mercedes_E.png", perMile: PER_MILE.eclass },
+  sclass: { label: "Mercedes-Benz S Class- Executive Sedan", image: "/images/mercedes1.png", perMile: PER_MILE.sclass },
+  escalade: { label: "Cadillac Escalade ESV-Van/SUV", image: "/images/escalade2.png", perMile: PER_MILE.escalade },
+  suburban: { label: "Chevrolet Suburban- Van/SUV", image: "/images/suburban.png", perMile: PER_MILE.suburban },
+  bmw7: { label: "BMW 7 series- Executive Sedan", image: "/images/bmw3.png", perMile: PER_MILE.bmw7 },
+  testride: { label: "Test Ride", image: "/images/mercedes_E.png", perMile: PER_MILE.testride },
 };
 
 function vehicleKeysForConfirmation(): VehicleKey[] {
@@ -38,14 +45,6 @@ function testRidePriceRow(): { base: number; total: number; note: string } {
     note: "Development test vehicle — flat $2 base fare before tax.",
   };
 }
-
-const FLAT_RATES = {
-  jfk: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
-  ewr: { eclass: 129, escalade: 189, suburban: 162, sclass: 252, bmw7: 252 },
-  hpn: { eclass: 218, sclass: 342, suburban: 270, escalade: 270, bmw7: 342 },
-  lga: { eclass: 109, sclass: 198, escalade: 153, suburban: 135, bmw7: 198 },
-} as const;
-const TAX_MULTIPLIER = 1.08;
 
 /** Official Stripe CardElement styling — PCI-compliant hosted fields. */
 const CARD_ELEMENT_OPTIONS = {
@@ -92,36 +91,6 @@ function IconShield({ className }: { className?: string }) {
       />
     </svg>
   );
-}
-
-function containsManhattan(text: string): boolean {
-  return text.toLowerCase().includes("manhattan");
-}
-
-const BASE_FARE_USD = 95;
-
-function detectAirport(text: string): keyof typeof FLAT_RATES | null {
-  const value = text.toLowerCase();
-  if (value.includes("jfk") || value.includes("john f. kennedy")) return "jfk";
-  if (value.includes("ewr") || value.includes("newark")) return "ewr";
-  if (value.includes("hpn") || value.includes("white plains") || value.includes("westchester")) return "hpn";
-  if (value.includes("lga") || value.includes("laguardia")) return "lga";
-  return null;
-}
-
-function involvesAirport(pickup: string, dropoff: string): boolean {
-  return detectAirport(pickup) !== null || detectAirport(dropoff) !== null;
-}
-
-function detectFlatRoute(pickup: string, dropoff: string): keyof typeof FLAT_RATES | null {
-  const pickupAirport = detectAirport(pickup);
-  const dropoffAirport = detectAirport(dropoff);
-  const pickupIsManhattan = containsManhattan(pickup);
-  const dropoffIsManhattan = containsManhattan(dropoff);
-
-  if (pickupAirport && dropoffIsManhattan) return pickupAirport;
-  if (dropoffAirport && pickupIsManhattan) return dropoffAirport;
-  return null;
 }
 
 async function getDrivingMiles(origin: string, destination: string): Promise<number | null> {
@@ -426,7 +395,7 @@ function ConfirmationContent() {
             acc[key] = testRidePriceRow();
             return acc;
           }
-          const flat = FLAT_RATES[routeKey][key];
+          const flat = AIRPORT_FLAT_RATES[routeKey][key];
           const total = Math.round(flat * TAX_MULTIPLIER);
           acc[key] = {
             base: flat,
@@ -447,9 +416,7 @@ function ConfirmationContent() {
           return acc;
         }
         const rate = VEHICLE_META[key].perMile;
-        const mileage = Math.round(miles * rate);
-        // Airport addresses: base + per-mile (then tax). Other routes keep the $95 floor.
-        const estimated = airportTrip ? BASE_FARE_USD + mileage : Math.max(BASE_FARE_USD, mileage);
+        const estimated = oneWayFareBeforeTax({ miles, vehicleKey: key, airportTrip });
         const total = Math.round(estimated * TAX_MULTIPLIER);
         acc[key] = {
           base: estimated,
@@ -457,9 +424,9 @@ function ConfirmationContent() {
           note:
             miles > 0
               ? airportTrip
-                ? `$${BASE_FARE_USD} base + ${miles.toFixed(1)} miles at $${rate}/mile.`
+                ? `$${BASE_FARE_USD} airport base + ${miles.toFixed(1)} mi × $${rate}/mi + tax.`
                 : `Driving distance ${miles.toFixed(1)} miles at $${rate}/mile.`
-              : "Distance Matrix unavailable, minimum fare applied.",
+              : "Distance unavailable, minimum fare applied.",
         };
         return acc;
       },

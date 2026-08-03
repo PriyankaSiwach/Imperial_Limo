@@ -42,7 +42,12 @@ export async function POST(req: NextRequest) {
             vehicleKey,
             pickupLocation: pickup,
           })
-        : await computeTotalUsd({ pickupLocation: pickup, dropoffLocation: dropoff, vehicleKey });
+        : await computeTotalUsd({
+            pickupLocation: pickup,
+            dropoffLocation: dropoff,
+            vehicleKey,
+            referer: req.headers.get("referer") || req.headers.get("origin"),
+          });
     const amountCents = totalUsdToStripeCents(totalUsd);
 
     if (amountCents < 50) {

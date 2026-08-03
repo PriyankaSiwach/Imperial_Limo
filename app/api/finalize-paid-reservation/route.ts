@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
           pickupLocation,
           dropoffLocation,
           vehicleKey,
+          referer: req.headers.get("referer") || req.headers.get("origin"),
         });
   const expectedCents = totalUsdToStripeCents(expectedUsd);
 
