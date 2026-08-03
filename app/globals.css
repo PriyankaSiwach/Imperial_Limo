@@ -595,9 +595,67 @@
     box-sizing: border-box;
   }
 
-  /* Legacy Places Autocomplete attaches .pac-container to body — keep above fixed nav & form layers */
-  .pac-container {
-    z-index: 10050 !important;
+  /* PlaceAutocompleteElement — match .form-group input look */
+  .reserve-place-autocomplete-host {
+    width: 100%;
+    min-width: 0;
+  }
+  .reserve-place-autocomplete-host:empty::before {
+    content: attr(data-placeholder);
+    display: block;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    color: rgba(201,168,76,0.6);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 300;
+    padding: 16px 20px;
+    box-sizing: border-box;
+    width: 100%;
+  }
+  gmp-place-autocomplete.reserve-place-autocomplete,
+  .reserve-place-autocomplete {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    color-scheme: dark;
+    background-color: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    color: var(--gold);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 300;
+    line-height: 1.4;
+  }
+  gmp-place-autocomplete.reserve-place-autocomplete:focus-within,
+  .reserve-place-autocomplete:focus-within {
+    border-color: var(--gold);
+    background-color: rgba(201, 168, 76, 0.04);
+  }
+  gmp-place-autocomplete.reserve-place-autocomplete::part(input),
+  .reserve-place-autocomplete::part(input) {
+    color: var(--gold);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 300;
+    padding: 16px 20px;
+    background: transparent;
+  }
+  gmp-place-autocomplete.reserve-place-autocomplete::part(prediction-list),
+  .reserve-place-autocomplete::part(prediction-list) {
+    z-index: 10050;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--gold);
+  }
+  gmp-place-autocomplete.reserve-place-autocomplete::part(prediction-item),
+  .reserve-place-autocomplete::part(prediction-item) {
+    color: var(--gold);
+  }
+  gmp-place-autocomplete.reserve-place-autocomplete::part(prediction-item-selected),
+  .reserve-place-autocomplete::part(prediction-item-selected) {
+    background: rgba(201, 168, 76, 0.12);
   }
   .form-title {
     font-family: var(--font-display);
