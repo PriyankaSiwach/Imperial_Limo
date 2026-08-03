@@ -98,6 +98,8 @@ function containsManhattan(text: string): boolean {
   return text.toLowerCase().includes("manhattan");
 }
 
+const BASE_FARE_USD = 95;
+
 function detectAirport(text: string): keyof typeof FLAT_RATES | null {
   const value = text.toLowerCase();
   if (value.includes("jfk") || value.includes("john f. kennedy")) return "jfk";
@@ -105,6 +107,10 @@ function detectAirport(text: string): keyof typeof FLAT_RATES | null {
   if (value.includes("hpn") || value.includes("white plains") || value.includes("westchester")) return "hpn";
   if (value.includes("lga") || value.includes("laguardia")) return "lga";
   return null;
+}
+
+function involvesAirport(pickup: string, dropoff: string): boolean {
+  return detectAirport(pickup) !== null || detectAirport(dropoff) !== null;
 }
 
 function detectFlatRoute(pickup: string, dropoff: string): keyof typeof FLAT_RATES | null {
@@ -433,6 +439,7 @@ function ConfirmationContent() {
       );
     }
     const miles = drivingMiles ?? 0;
+    const airportTrip = involvesAirport(booking.pickupLocation, booking.dropoffLocation);
     return vehicles.reduce(
       (acc, key) => {
         if (key === "testride") {
@@ -440,21 +447,25 @@ function ConfirmationContent() {
           return acc;
         }
         const rate = VEHICLE_META[key].perMile;
-        const estimated = Math.max(95, Math.round(miles * rate));
+        const mileage = Math.round(miles * rate);
+        // Airport addresses: base + per-mile (then tax). Other routes keep the $95 floor.
+        const estimated = airportTrip ? BASE_FARE_USD + mileage : Math.max(BASE_FARE_USD, mileage);
         const total = Math.round(estimated * TAX_MULTIPLIER);
         acc[key] = {
           base: estimated,
           total,
           note:
             miles > 0
-              ? `Driving distance ${miles.toFixed(1)} miles at $${rate}/mile.`
+              ? airportTrip
+                ? `$${BASE_FARE_USD} base + ${miles.toFixed(1)} miles at $${rate}/mile.`
+                : `Driving distance ${miles.toFixed(1)} miles at $${rate}/mile.`
               : "Distance Matrix unavailable, minimum fare applied.",
         };
         return acc;
       },
       {} as Record<VehicleKey, { base: number; total: number; note: string }>
     );
-  }, [booking.tripType, booking.durationHours, routeKey, drivingMiles]);
+  }, [booking.tripType, booking.durationHours, booking.pickupLocation, booking.dropoffLocation, routeKey, drivingMiles]);
 
   const chosen = priceByVehicle[selectedVehicle];
 

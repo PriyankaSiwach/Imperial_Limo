@@ -49,6 +49,8 @@ function containsManhattan(text: string): boolean {
   return text.toLowerCase().includes("manhattan");
 }
 
+const BASE_FARE_USD = 95;
+
 function detectAirport(text: string): keyof typeof FLAT_RATES | null {
   const value = text.toLowerCase();
   if (value.includes("jfk") || value.includes("john f. kennedy")) return "jfk";
@@ -56,6 +58,11 @@ function detectAirport(text: string): keyof typeof FLAT_RATES | null {
   if (value.includes("hpn") || value.includes("white plains") || value.includes("westchester")) return "hpn";
   if (value.includes("lga") || value.includes("laguardia")) return "lga";
   return null;
+}
+
+/** True when pickup or dropoff is a known airport address. */
+export function involvesAirport(pickup: string, dropoff: string): boolean {
+  return detectAirport(pickup) !== null || detectAirport(dropoff) !== null;
 }
 
 export function detectFlatRoute(pickup: string, dropoff: string): keyof typeof FLAT_RATES | null {
@@ -124,7 +131,11 @@ export async function computeTotalUsd(params: ComputeTotalUsdParams): Promise<nu
   const miles = await fetchDrivingMiles(params.pickupLocation, params.dropoffLocation);
   const m = miles ?? 0;
   const rate = PER_MILE[params.vehicleKey];
-  const estimated = Math.max(95, Math.round(m * rate));
+  const mileage = Math.round(m * rate);
+  // Airport addresses: base + per-mile (then tax). Other routes keep the $95 floor.
+  const estimated = involvesAirport(params.pickupLocation, params.dropoffLocation)
+    ? BASE_FARE_USD + mileage
+    : Math.max(BASE_FARE_USD, mileage);
   return Math.round(estimated * TAX_MULTIPLIER);
 }
 
