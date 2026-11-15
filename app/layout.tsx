@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import BookingLaneWidget from "@/components/BookingLaneWidget";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -36,12 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           `}
         </Script>
         {children}
-        <div id="widget-by-bookinglane" />
-        <Script
-          id="bookinglane-widget"
-          src="https://bookinglane-widgets.s3.us-east-2.amazonaws.com/Widget/widget.js?token=31f2b325-c25a-4bc2-a798-cb1c179eca5d&lat=40.0393522&lng=-75.5997511"
-          strategy="afterInteractive"
-        />
+        <BookingLaneWidget />
       </body>
     </html>
   );
